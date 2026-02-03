@@ -7,6 +7,7 @@ import json
 import shelve
 import time
 import threading
+import io
 from datetime import datetime
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -14,6 +15,7 @@ from streamlit_autorefresh import st_autorefresh
 
 from api.client import api_request, RequestType, GetAllUsers, GetUserCv, ExportCv
 from core.storage import USER_DATA_DIR, TOKEN_PATH
+from core.database import init_db, start_writer, load_users_cv_dates
 
 
 @dataclass
@@ -32,7 +34,7 @@ if "worker_thread" not in st.session_state:
     st.session_state.worker_thread = None
 
 
-def process_user(user, api_key, api_secret):
+def process_user(user, api_key, api_secret, existing_users, writer_queue):
     start_time = time.time()
     # récupérer les CV
     response = api_request(
@@ -54,19 +56,36 @@ def process_user(user, api_key, api_secret):
 
     if not latest_cv_id:
         return
+    
+    db_cv_date = existing_users.get(user["id"])
+    if latest_date != db_cv_date :
 
-    response = api_request(
-        api_secret,
-        RequestType.EXPORT_CV,
-        ExportCv(api_key, "", latest_cv_id)
-    )
-    with open(f"{USER_DATA_DIR}\\CV_n_{latest_cv_id}.docx", "wb") as f:
-        f.write(response.content)
+        response = api_request(
+            api_secret,
+            RequestType.EXPORT_CV,
+            ExportCv(api_key, "", latest_cv_id)
+        )
+        # out = io.BytesIO()
+        # response.content.save(out)
+        doc_bytes = response.content
+        # with open(f"{USER_DATA_DIR}\\CV_n_{latest_cv_id}.docx", "wb") as f:
+        #     # f.write(response.content)
+        #     Path(f.read_bytes().rjust(16, b'x')
+
+        writer_queue.put({"type": "upsert_user", "data": (user["id"],
+                                                          user["firstname"],
+                                                          user["lastname"],
+                                                          user["username"],
+                                                          latest_cv_id,
+                                                          latest_date.isoformat(),
+                                                          1)})
+
+        writer_queue.put({"type": "upsert_cv_raw", "data": (latest_cv_id, doc_bytes)})        
 
     return start_time
 
 
-def fetch_profiles_worker(state: JobState, api_key, api_secret):
+def fetch_profiles_worker(state: JobState, api_key, api_secret, existing_users, writer_queue):
     try:
         state.running = True
         state.message = "Initialisation..."
@@ -80,7 +99,7 @@ def fetch_profiles_worker(state: JobState, api_key, api_secret):
             response = api_request(
                 api_secret,
                 RequestType.GET_ALL_USERS,
-                GetAllUsers(api_key, "", "user", page, 100)
+                GetAllUsers(api_key, "", "manager", page, 100)
             )
 
             data = json.loads(response.text)
@@ -97,9 +116,11 @@ def fetch_profiles_worker(state: JobState, api_key, api_secret):
         treated = 0
         start_time = time.time()
         total_time = 0
+
+
         with ThreadPoolExecutor(max_workers=15) as executor:
             futures = [
-                executor.submit(process_user, user, api_key, api_secret)
+                executor.submit(process_user, user, api_key, api_secret, existing_users, writer_queue)
                 for user in users
             ]
 
@@ -148,9 +169,20 @@ def start_job():
     api_key = token["api_key"]
     api_secret = token["api_secret"]
 
+    init_db()
+
+    existing_users = load_users_cv_dates()
+
+    writer_queue, stop_event, writer_thread = start_writer()
+
+    writer_queue.put({
+    "type": "upsert_user",
+    "data": (1, "Test", "User", "testuser", None, "2025-01-01", 1)
+})
+
     t = threading.Thread(
         target=fetch_profiles_worker,
-        args=(state, api_key, api_secret),
+        args=(state, api_key, api_secret, existing_users, writer_queue),
         daemon=True
     )
     t.start()
