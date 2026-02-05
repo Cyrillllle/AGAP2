@@ -31,6 +31,10 @@ def init_db() :
                 'cv_id INTEGER PRIMARY KEY, ' \
                 'data_raw BLOB)')
     
+    cursor.execute('CREATE TABLE IF NOT EXISTS cv_parsed (' \
+                'cv_id INTEGER PRIMARY KEY, ' \
+                'parsed_json TEXT)')
+    
     cursor.close()
     conn.commit()
     conn.close()
@@ -106,3 +110,24 @@ def load_users_cv_dates():
 
     return {user_id: cv_date for user_id, cv_date in rows}
                 
+
+def read_raw_data(batch_size = 50) :
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+                   SELECT r.cv_id, r.data_raw
+                   FROM cv_raw r
+                   LEFT JOIN cv_parsed p ON r.cv_id = p.cv_id
+                   WHERE p.cv_id IS NULL
+                   """)
+
+    while True : 
+        rows = cursor.fetchmany(batch_size)
+        if not rows :
+            break
+        for cv_id, data_raw in rows :
+            yield cv_id, data_raw
+
+    cursor.close()
+    conn.close()

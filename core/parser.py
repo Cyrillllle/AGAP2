@@ -2,7 +2,10 @@ import time
 import docx
 import re
 import sqlite3
+import io
+from unidecode import unidecode
 from dataclasses import dataclass
+from core.database import *
 
 
 @dataclass
@@ -71,14 +74,14 @@ def parse_skills(paragraphs, index) :
         if "Heading 1" in para_style :
             break
         else :
-            if "+" in para.text :
+            if "Heading" not in para.style.name and para.text != "" :
                 skills.append(para.text.strip("+ \t"))
         index += 1
     return skills
 
                 
 def parse_cv(file) :
-    doc = docx.Document(file)
+    doc = docx.Document(io.BytesIO(file))
     reading_exp = -1
     reading_skills = -1
     heading_dict = Heading_dict_type_2
@@ -94,13 +97,12 @@ def parse_cv(file) :
             parse_exp_details(doc.paragraphs, index + 1, heading_dict, exp_details)
             experiences.append(exp_details)
 
-        if "Heading 1" in p.style.name and "Expériences" in p.text : 
+        if "Heading 1" in p.style.name and "experiences" in unidecode(p.text.lower()) : 
             reading_exp = 0
             continue
 
-        if "Heading 1" in p.style.name and "Compétences" in p.text : 
+        if "Heading 1" in p.style.name and ("competences" in unidecode(p.text.lower()) or "skills" in unidecode(p.text.lower())) : 
             skills = parse_skills(doc.paragraphs, index + 1)
-            print(skills)
             continue
                 
         if reading_exp == 0 and "Heading 1" in p.style.name :
@@ -112,3 +114,45 @@ def parse_cv(file) :
         if reading_exp == 1 and reading_skills == 1 :
             break
     return experiences, skills
+
+
+def parse_cv_bis(file) :
+    # doc = docx.Document(io.BytesIO(file))
+    doc = docx.Document(file)
+    reading_exp = -1
+    reading_skills = -1
+    heading_dict = Heading_dict_type_2
+    experiences = []
+    skills = []
+    for index, p in enumerate(doc.paragraphs) :
+        if "Heading" in p.style.name :
+            print(p.style.name + "     " + unidecode(p.text.lower()))
+            print("competences" in unidecode(p.text.lower()))
+        if "Heading 4" in p.style.name and p.text == "THINK2MORROW" :
+            heading_dict = Heading_dict_type_1
+            break
+    for index, p in enumerate(doc.paragraphs) :
+        if reading_exp == 0 and p.style.name in heading_dict and heading_dict[p.style.name] == "title":
+            exp_details = Experience(p.text, "", "", [])
+            parse_exp_details(doc.paragraphs, index + 1, heading_dict, exp_details)
+            experiences.append(exp_details)
+
+        if "Heading 1" in p.style.name and "experiences" in unidecode(p.text.lower()) : 
+            reading_exp = 0
+            continue
+
+        if "Heading 1" in p.style.name and "competences" in unidecode(p.text.lower()) : 
+            skills = parse_skills(doc.paragraphs, index + 1)
+            continue
+                
+        if reading_exp == 0 and "Heading 1" in p.style.name :
+            reading_exp = 1
+
+        if reading_skills == 0 and "Heading 1" in p.style.name :
+            reading_skills = 1
+
+        if reading_exp == 1 and reading_skills == 1 :
+            break
+    return experiences, skills
+
+

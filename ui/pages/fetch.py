@@ -27,14 +27,19 @@ class JobState:
     error           : str | None = None
     done            : bool = False
 
-if "job_state" not in st.session_state:
-    st.session_state.job_state = JobState()
+Selection_url = {
+    "IT"        : "dc-it.",
+    "Industrie" : "dc."
+}
+
+if "job_state_fetch" not in st.session_state:
+    st.session_state.job_state_fetch = JobState()
 
 if "worker_thread" not in st.session_state:
     st.session_state.worker_thread = None
 
 
-def process_user(user, api_key, api_secret, existing_users, writer_queue):
+def process_user(user, api_key, api_secret, existing_users, writer_queue, selection):
     start_time = time.time()
     # récupérer les CV
     response = api_request(
@@ -46,46 +51,71 @@ def process_user(user, api_key, api_secret, existing_users, writer_queue):
     cvs = json.loads(response.text)
 
     latest_cv_id = None
+    needs_parsing = 0
     latest_date = datetime.fromisoformat("2000-01-01T01:01:01+01:00")
 
     for item in cvs:
-        cv_date = datetime.fromisoformat(item["updated"])
-        if cv_date > latest_date:
-            latest_date = cv_date
-            latest_cv_id = item["id"]
+        try :
+            cv_date = datetime.fromisoformat(item["updated"])
+            cv_url = item["public_url"]
+            if cv_date > latest_date:
+                latest_date = cv_date
+                latest_cv_id = item["id"]
+                cv_url = item["public_url"]
+        except Exception as e:
+            print(e)
 
     if not latest_cv_id:
-        return
+        return start_time
     
-    db_cv_date = existing_users.get(user["id"])
-    if latest_date != db_cv_date :
+    try : 
+        skip_cv = True
+        if selection == "all" or Selection_url[selection] in cv_url :
+            skip_cv = False
 
+    except Exception as e :
+        print("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeerere")
+        print(e)
+    
+    if skip_cv :
+        return start_time
+
+    
+
+    db_cv_date = existing_users.get(user["id"])
+    latest_db_cv_date = 0
+    if db_cv_date != None :
+        latest_db_cv_date = datetime.fromisoformat(db_cv_date)
+
+    if latest_date != latest_db_cv_date :
         response = api_request(
             api_secret,
             RequestType.EXPORT_CV,
             ExportCv(api_key, "", latest_cv_id)
         )
-        # out = io.BytesIO()
-        # response.content.save(out)
-        doc_bytes = response.content
-        # with open(f"{USER_DATA_DIR}\\CV_n_{latest_cv_id}.docx", "wb") as f:
-        #     # f.write(response.content)
-        #     Path(f.read_bytes().rjust(16, b'x')
+
+        if response.status_code == 200 :
+            doc_bytes = response.content
+            writer_queue.put({"type": "upsert_cv_raw", "data": (latest_cv_id, doc_bytes)})
+            needs_parsing = 1
+            latest_cv_date = latest_date.isoformat()
+        else : 
+            latest_cv_id = None
+            latest_cv_date = None
+            needs_parsing = 0
 
         writer_queue.put({"type": "upsert_user", "data": (user["id"],
-                                                          user["firstname"],
-                                                          user["lastname"],
-                                                          user["username"],
-                                                          latest_cv_id,
-                                                          latest_date.isoformat(),
-                                                          1)})
-
-        writer_queue.put({"type": "upsert_cv_raw", "data": (latest_cv_id, doc_bytes)})        
+                                                        user["firstname"],
+                                                        user["lastname"],
+                                                        user["username"],
+                                                        latest_cv_id,
+                                                        latest_cv_date,
+                                                        needs_parsing)})
 
     return start_time
 
 
-def fetch_profiles_worker(state: JobState, api_key, api_secret, existing_users, writer_queue):
+def fetch_profiles_worker(state: JobState, api_key, api_secret, existing_users, writer_queue, selection):
     try:
         state.running = True
         state.message = "Initialisation..."
@@ -95,16 +125,17 @@ def fetch_profiles_worker(state: JobState, api_key, api_secret, existing_users, 
         start = time.time()
         timeout = 60
         page = 1
-        while len(users) != total :
+        while len(users) < total :
             response = api_request(
                 api_secret,
                 RequestType.GET_ALL_USERS,
-                GetAllUsers(api_key, "", "manager", page, 100)
+                GetAllUsers(api_key, "", "user", page, 100)
             )
 
             data = json.loads(response.text)
             users = users + data["users"]
             total = data["total"]
+            timeout = total / 100
             elapsed_time = time.time() - start
 
             page += 1
@@ -114,13 +145,14 @@ def fetch_profiles_worker(state: JobState, api_key, api_secret, existing_users, 
                 break
 
         treated = 0
+        total = len(users)
         start_time = time.time()
         total_time = 0
 
 
-        with ThreadPoolExecutor(max_workers=15) as executor:
+        with ThreadPoolExecutor(max_workers=8) as executor:
             futures = [
-                executor.submit(process_user, user, api_key, api_secret, existing_users, writer_queue)
+                executor.submit(process_user, user, api_key, api_secret, existing_users, writer_queue, selection)
                 for user in users
             ]
 
@@ -143,7 +175,7 @@ def fetch_profiles_worker(state: JobState, api_key, api_secret, existing_users, 
                 estimation_sec = str(int((remaining_time%60))) + "s"
                 estimation = estimation_mn + estimation_sec
                     
-                state.message = f"{estimation} restantes"
+                state.message = f"{treated}/{total} profils traités. Environ {estimation} restantes"
                 start_time = time.time()
 
         state.done = True
@@ -156,8 +188,11 @@ def fetch_profiles_worker(state: JobState, api_key, api_secret, existing_users, 
         state.running = False
 
 
-def start_job():
-    state = st.session_state.job_state
+def start_job(selection):
+
+    print(selection)
+    print(selection == "IT")
+    state = st.session_state.job_state_fetch
     state.running = True
     state.stop_requested = False
     state.progress = 0.0
@@ -175,14 +210,9 @@ def start_job():
 
     writer_queue, stop_event, writer_thread = start_writer()
 
-    writer_queue.put({
-    "type": "upsert_user",
-    "data": (1, "Test", "User", "testuser", None, "2025-01-01", 1)
-})
-
     t = threading.Thread(
         target=fetch_profiles_worker,
-        args=(state, api_key, api_secret, existing_users, writer_queue),
+        args=(state, api_key, api_secret, existing_users, writer_queue, selection),
         daemon=True
     )
     t.start()
@@ -190,23 +220,45 @@ def start_job():
     st.session_state.worker_thread = t
 
 def stop_job():
-    st.session_state.job_state.stop_requested = True
+    st.session_state.job_state_fetch.stop_requested = True
 
 
 def render():
-    state = st.session_state.job_state
+    state = st.session_state.job_state_fetch
 
     st.title("Gestion de la base de données")
 
+    container = st.container()
+
+    select_all = st.checkbox(
+        "Select all",
+        disabled=state.running,
+        key="select_all_checkbox"
+    )
+
+    selection = container.selectbox(
+        "Filter les profils à télécharger :",
+        ["", "Industrie", "IT"],
+        disabled=state.running or select_all,
+        key="filter_selectbox"
+    )
+
     if not state.running:
-        st.button("Récupérer tous les profils", on_click=start_job)
+        selected = "all" if select_all else selection
+
+        st.button(
+            "Créer/mettre à jour la base de données",
+            on_click=start_job,
+            args=(selected,),
+            disabled=(selected == ""),
+            key="start_button"
+        )
     else:
-        st.button("Stop", on_click=stop_job)
+        st.button("Stop", on_click=stop_job, key="stop_button")
 
     if state.running:
         st.progress(state.progress, text=state.message)
         st_autorefresh(interval=500, key="refresh_job")
-        
 
     if state.done:
         st.success("Traitement terminé")

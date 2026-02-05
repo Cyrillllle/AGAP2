@@ -8,6 +8,12 @@ import requests
 from dataclasses import dataclass
 import json
 import sqlite3
+import urllib3
+
+
+
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class RequestType(enumerate) :
     GET_ALL_USERS = "GetAllUsers"
