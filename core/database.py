@@ -33,7 +33,8 @@ def init_db() :
     
     cursor.execute('CREATE TABLE IF NOT EXISTS cv_parsed (' \
                 'cv_id INTEGER PRIMARY KEY, ' \
-                'parsed_json TEXT)')
+                'exp TEXT, ' \
+                'skills TEXT)')
     
     cursor.close()
     conn.commit()
@@ -80,6 +81,12 @@ def db_raw_writer(writer_queue, stop_event) :
             elif kind == "upsert_cv_raw" :
                 cursor.execute('INSERT OR REPLACE INTO cv_raw (cv_id, data_raw )' \
                                'VALUES (?, ?)', task["data"])
+                
+            elif kind == "upsert_cv_parsed" :
+                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                cursor.execute("""
+                               INSERT OR REPLACE INTO cv_parsed (cv_id, exp, skills) 
+                               VALUES (?, ?, ?)""", task["data"])
             
             writer_queue.task_done()
 
@@ -109,7 +116,21 @@ def load_users_cv_dates():
     conn.close()
 
     return {user_id: cv_date for user_id, cv_date in rows}
-                
+
+
+
+def get_total_cv_parsing() :
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+                   SELECT SUM(CASE WHEN cv_needs_parsing > 0 THEN 1 ELSE 0 END)
+                   FROM users
+                   """)
+    
+    return cursor.fetchone()[0]
+
+
 
 def read_raw_data(batch_size = 50) :
     conn = connect_ddb(DB_PATH)
@@ -122,7 +143,7 @@ def read_raw_data(batch_size = 50) :
                    WHERE p.cv_id IS NULL
                    """)
 
-    while True : 
+    while True :
         rows = cursor.fetchmany(batch_size)
         if not rows :
             break

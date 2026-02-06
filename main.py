@@ -1,6 +1,6 @@
 import streamlit as st
 from api import client
-from ui.pages import init, fetch, show, search, api_token, anaParse
+from ui.pages import init, fetch, show, search, apiToken, anaParse, pipeline
 from pathlib import Path
 
 
@@ -9,8 +9,8 @@ st.html("<style>[data-testid='stHeaderActionElements'] {display: none;}</style>"
 
 INIT_PAGES = {
     "init": init.render,
-    "token": api_token.render,
-    "token_input": api_token.token_get, 
+    "token": apiToken.render,
+    "token_input": apiToken.token_get, 
     # "detail": detail.render,
 }
 
@@ -18,6 +18,7 @@ PAGES = {
     "show"       : show.render, 
     "fetch"      : fetch.render, 
     "Analyse"    : anaParse.render,
+    "Pipeline"   : pipeline.render,
     "search"     : search.render, 
 }
 
