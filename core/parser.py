@@ -32,136 +32,129 @@ class Experience :
     details   : list
 
 
-Heading_dict_type_1 = {
-    "Heading 2" : "title",
-    "Heading 5" : "company",
-    "Heading 6" : "duration", 
-    "details"   : "Heading 4"
-}
+def get_details_heading_type(paragraphs) :
+    heading_type = ""
+    for p in paragraphs :
+        if ("taches effectuees" == unidecode(p.text.lower()) or "contexte" == unidecode(p.text.lower()) or "tasks completed" == unidecode(p.text.lower()) or "technical environment" == unidecode(p.text.lower())) :
+            heading_type = p.style.name
+            break
+    return heading_type
 
-Heading_dict_type_2 = {
-    "Heading 2" : "title",
-    "Heading 6" : "company",
-    "Heading 7" : "duration",
-    "details"   : "Heading 5"
-}
+def get_title_heading_type(paragraphs) :
+    heading_type = ""
+    for p in paragraphs :
+        if "Heading" in p.style.name and ("experience" in unidecode(p.text.lower()) or "competence" in unidecode(p.text.lower())) and ("an" not in unidecode(p.text.lower()) and "dossier" not in unidecode(p.text.lower())) :
+            heading_type = p.style.name
+            break
+    return heading_type
 
-Heading_dict_type_3 = {
-    "Heading 3" : "title",
-    "Heading 7" : "company",
-    "Heading 8" : "duration",
-    "details"   : "Heading 6"
-}
-
-
-def get_details(paragraphs, index, heading_dict, exp_details : Experience) :
+def get_exp_details(paragraphs, index, details_heading, company_heading, title_heading, exp_details : Experience) :
+    sub_text = []
     while index < len(paragraphs) :
         para = paragraphs[index]
         para_style = para.style.name
-        if heading_dict == Heading_dict_type_1 and "Heading 4" in para_style  :
-            index += 1
-        elif "Heading" in para_style : 
+        if (company_heading in para_style or title_heading in para_style) and para.text != "THINK2MORROW" and not re.search("\\d / \\d", para.text) and para.text != "" : 
+            exp_details.details.append(sub_text)
+            sub_text = []
             break
+        elif details_heading in para_style and para.text != "THINK2MORROW" :
+            if len(sub_text) != 0 :
+                exp_details.details.append(sub_text)
+                sub_text = [para.text]
+            elif para.text != "" and para.text != "THINK2MORROW" :
+                sub_text.append(para.text)
         else : 
-            if para.text != "" and not re.search("\\d / \\d", para.text) :
-                exp_details.details[-1].append(para.text.strip("+ \t"))
-            index += 1
+            if para.text != "" and not re.search("\\d / \\d", para.text) and para.text != "THINK2MORROW" :
+                sub_text.append(para.text.strip("+ \t"))
+        index += 1
+    if len(sub_text) != 0 :
+        exp_details.details.append(sub_text)
     return index
 
-
-def parse_exp_details(paragraphs, index, heading_dict, exp_details : Experience) :
-    while index < len(paragraphs) :
-        para = paragraphs[index]
-        para_style = para.style.name
-        if para_style in heading_dict :
-            if heading_dict[para_style] == "title" :
-                break
-            elif heading_dict[para_style] == "company" :
-                exp_details.company = para.text
-            elif heading_dict[para_style] == "duration" :
-                exp_details.duration = para.text
-            index += 1
-        elif heading_dict["details"] in para_style :
-            exp_details.details.append([para.text])
-            new_index = get_details(paragraphs, index + 1, heading_dict, exp_details)
-            index = new_index
-        else :
-            index += 1
-
-
-def parse_skills(paragraphs, index) :
+def parse_skills(paragraphs, index, title_heading) :
     skills = []
     while index < len(paragraphs) :
         para = paragraphs[index]
         para_style = para.style.name
-        if "Heading 1" in para_style :
+        if title_heading in para_style :
             break
         else :
-            if "Heading" not in para.style.name and para.text != "" :
+            if "Heading" not in para.style.name and para.text != "" and para.text != "THINK2MORROW" and not re.search("\\d / \\d", para.text) :
                 skills.append(para.text.strip("+ \t"))
         index += 1
-    return skills
+    return skills, index
 
-                
-def parse_cv(file) :
+def get_company_heading(paragraphs, index) :
+    while index < len(paragraphs) :
+        p = paragraphs[index]
+        if p.text != "" :
+            break
+        else : 
+            index += 1
+
+    return p.style.name, index
+
+def parse_cv(file, cv_id) :
     doc = docx.Document(io.BytesIO(file))
+    # doc = docx.Document(file)
     reading_exp = -1
     reading_skills = -1
-    heading_dict = Heading_dict_type_1
+    title_heading  = get_title_heading_type(doc.paragraphs)
+    details_heading = get_details_heading_type(doc.paragraphs)
+    company_heading = ""
+    index = 0
     experiences = []
     skills = []
-    for index, p in enumerate(doc.paragraphs) :
-        if "Heading 4" in p.style.name and p.text == "THINK2MORROW" :
-            heading_dict = Heading_dict_type_2
-            break
-        elif "Heading 5" in p.style.name and p.text == "THINK2MORROW" :
-            heading_dict = Heading_dict_type_3
-            break
-    for index, p in enumerate(doc.paragraphs) :
-        if reading_exp == 0 and p.style.name in heading_dict and heading_dict[p.style.name] == "title":
-            exp_details = Experience(p.text, "", "", [])
-            parse_exp_details(doc.paragraphs, index + 1, heading_dict, exp_details)
-            exp_dict = asdict(exp_details)
-            experiences.append(exp_details)
-
-        if "Heading 1" in p.style.name and "experiences" == unidecode(p.text.lower()) : 
+    while index < len(doc.paragraphs) :
+        p = doc.paragraphs[index]
+        if title_heading in p.style.name and "experience" in unidecode(p.text.lower()) and "resume" not in unidecode(p.text.lower()) and "summary" not in unidecode(p.text.lower()) : 
             reading_exp = 0
-            continue
-
-        if "Heading 1" in p.style.name and ("competences" in unidecode(p.text.lower()) or "skills" in unidecode(p.text.lower())) : 
-            skills = parse_skills(doc.paragraphs, index + 1)
-            continue
-                
-        if reading_exp == 0 and "Heading 1" in p.style.name :
-            reading_exp = 1
-
-        if reading_skills == 0 and "Heading 1" in p.style.name :
-            reading_skills = 1
-
-        if reading_exp == 1 and reading_skills == 1 :
-            break
-
+            company_heading, oIndex = get_company_heading(doc.paragraphs, index+1)
+            index = oIndex - 1
+        elif reading_exp == 0 :
+            if company_heading in p.style.name and "THINK2MORROW" not in p.text and not re.search("\\d / \\d", p.text) and p.text != "" :
+                exp_details = Experience(doc.paragraphs[index].text, doc.paragraphs[index+1].text, doc.paragraphs[index+2].text, [])
+                oIndex = get_exp_details(doc.paragraphs, index+3, details_heading, company_heading, title_heading, exp_details)
+                index = oIndex - 1
+                # exp.append(exp_details)
+                exp_dict = asdict(exp_details)
+                experiences.append(exp_dict)
+            elif title_heading in p.style.name :
+                reading_exp = 1
+        if title_heading in p.style.name and ("competences" == unidecode(p.text.lower()) or "skills" == unidecode(p.text.lower())) : 
+            skills, oIndex = parse_skills(doc.paragraphs, index+1, title_heading)
+            index = oIndex - 1
+        index += 1
     exp_json = json.dumps(experiences)
     skills_json = json.dumps(skills)
-    print(experiences)
     return exp_json, skills_json
 
 
 def parse_worker(pipelineManager, selection, writer_queue):
     treated = 0
     total = get_total_cv_parsing()
-
-    print(total)
+    total_time = 0
 
     for cv_id, cv_raw in read_raw_data():
         try :
             # if pipelineManager._stop_event :
             #     break
-            print('!!!!!!!')
-            exp, skills = parse_cv(cv_raw)
+            start_time = time.time()
+            exp, skills = parse_cv(cv_raw, cv_id)
+            elapsed_time = time.time() - start_time
             treated += 1
+            total_time = total_time + elapsed_time
+            mean_treatmment_time = total_time / treated
+            remaining_time = mean_treatmment_time * (total - treated)
+            if remaining_time >= 60 :
+                estimation_mn = str(int(remaining_time/60))+"mn"
+            else : 
+                estimation_mn = ""
+            estimation_sec = str(int((remaining_time%60))) + "s"
+            estimation = estimation_mn + estimation_sec
+            
             pipelineManager.progress = treated / total      
-            pipelineManager.message = f"{treated}/{total} profils traités"
+            pipelineManager.message = f"{treated}/{total} profils traités. Environ {estimation} restantes"
             if skills == [] :
                 print(cv_id)
             writer_queue.put({"type": "upsert_cv_parsed", "data": (cv_id, exp, skills)})

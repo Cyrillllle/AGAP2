@@ -62,54 +62,68 @@ def process_user(user, api_key, api_secret, existing_users, writer_queue, select
                 latest_date = cv_date
                 latest_cv_id = item["id"]
                 cv_url = item["public_url"]
+                cv_completion = item["completion"]
         except Exception as e:
             print(e)
-
-    if not latest_cv_id:
-        return start_time
     
-    try : 
-        skip_cv = True
+    skip_user = True
+    try :
         if selection == "all" or Selection_url[selection] in cv_url :
-            skip_cv = False
-
+            skip_user = False
     except Exception as e :
         print(e)
     
-    if skip_cv :
+    if skip_user :
         return start_time
 
-    
-
-    db_cv_date = existing_users.get(user["id"])
-    latest_db_cv_date = 0
-    if db_cv_date != None :
-        latest_db_cv_date = datetime.fromisoformat(db_cv_date)
-
-    if latest_date != latest_db_cv_date :
-        response = api_request(
-            api_secret,
-            RequestType.EXPORT_CV,
-            ExportCv(api_key, "", latest_cv_id)
-        )
-
-        if response.status_code == 200 :
-            doc_bytes = response.content
-            writer_queue.put({"type": "upsert_cv_raw", "data": (latest_cv_id, doc_bytes)})
-            needs_parsing = 1
-            latest_cv_date = latest_date.isoformat()
-        else : 
-            latest_cv_id = None
-            latest_cv_date = None
-            needs_parsing = 0
-
-        writer_queue.put({"type": "upsert_user", "data": (user["id"],
+    if not latest_cv_id or not cv_completion :
+        latest_cv_date = None
+        needs_parsing = 0
+        try :
+            writer_queue.put({"type": "upsert_user", "data": (user["id"],
                                                         user["firstname"],
                                                         user["lastname"],
                                                         user["username"],
                                                         latest_cv_id,
                                                         latest_cv_date,
                                                         needs_parsing)})
+        except Exception as e :
+            print(e)
+        return start_time
+
+    else : 
+        db_cv_date = existing_users.get(user["id"])
+        latest_db_cv_date = 0
+        if db_cv_date != None :
+            latest_db_cv_date = datetime.fromisoformat(db_cv_date)
+
+        if latest_date != latest_db_cv_date :
+            response = api_request(
+                api_secret,
+                RequestType.EXPORT_CV,
+                ExportCv(api_key, "", latest_cv_id)
+            )
+
+            if response.status_code == 200 :
+                doc_bytes = response.content
+                writer_queue.put({"type": "upsert_cv_raw", "data": (latest_cv_id, doc_bytes)})
+                needs_parsing = 1
+                latest_cv_date = latest_date.isoformat()
+            else : 
+                latest_cv_id = None
+                latest_cv_date = None
+                needs_parsing = 0
+
+            try :
+                writer_queue.put({"type": "upsert_user", "data": (user["id"],
+                                                            user["firstname"],
+                                                            user["lastname"],
+                                                            user["username"],
+                                                            latest_cv_id,
+                                                            latest_cv_date,
+                                                            needs_parsing)})
+            except Exception as e :
+                print(e)
 
     return start_time
 
@@ -132,8 +146,7 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
 
             data = json.loads(response.text)
             users = users + data["users"]
-            # total = data["total"]
-            total = 100
+            total = data["total"]
             timeout = total / 100
             elapsed_time = time.time() - start
 
@@ -182,6 +195,7 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
         print(e)
 
     finally :
+        print(("finally fetcher"))
         pipelineManager.step += 1
 
 

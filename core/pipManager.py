@@ -25,7 +25,7 @@ class PipelineStats:
 class PipelineManager:
     def __init__(self):
         self.running     = False
-        self.step        = 1
+        self.step        = 2
         self.done        = False
         self.progress    = 0.0
         self.message     = ""
@@ -47,12 +47,15 @@ class PipelineManager:
                 print("etape 1")
                 fetch_stats = start_fetch(self, selection=selection, stop_requested=self._stop_event)
                 # self._merge_stats(fetch_stats)
-                self.progress = 0.0
                 if self._stop_event.is_set():
                     return self._finish("Arrêt pendant le fetch")
                 
+            print("la")
+                
             
             if self.step == 2 :
+                self.progress = 0.0
+                print("debut etape 2")
                 parse_stats = start_parse(self, stop_event=self._stop_event)
                 # self._merge_stats(parse_stats)
 

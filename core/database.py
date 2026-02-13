@@ -83,7 +83,6 @@ def db_raw_writer(writer_queue, stop_event) :
                                'VALUES (?, ?)', task["data"])
                 
             elif kind == "upsert_cv_parsed" :
-                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 cursor.execute("""
                                INSERT OR REPLACE INTO cv_parsed (cv_id, exp, skills) 
                                VALUES (?, ?, ?)""", task["data"])
@@ -139,13 +138,14 @@ def read_raw_data(batch_size = 50) :
     cursor.execute("""
                    SELECT r.cv_id, r.data_raw
                    FROM cv_raw r
-                   LEFT JOIN cv_parsed p ON r.cv_id = p.cv_id
-                   WHERE p.cv_id IS NULL
+                   LEFT JOIN users u ON r.cv_id = u.cv_id
+                   WHERE u.cv_needs_parsing = 1
                    """)
 
     while True :
         rows = cursor.fetchmany(batch_size)
         if not rows :
+            print("here1")
             break
         for cv_id, data_raw in rows :
             yield cv_id, data_raw

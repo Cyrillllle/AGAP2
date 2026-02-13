@@ -46,7 +46,7 @@ def render():
         if pm.step == 1 :
             step_status.write("Téléchargement des CV")
         elif pm.step == 2 :
-            step_status.write("Téléchargement des CV")
+            step_status.write("~~Téléchargement des CV~~")
             step_status.write("Dépouillement des CV")
         st_autorefresh(interval=500, key="refresh_job")
 
