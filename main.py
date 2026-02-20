@@ -1,11 +1,15 @@
 import streamlit as st
 from api import client
-from ui.pages import init, fetch, show, search, apiToken, anaParse, pipeline
+from core.storage import init_storage
+from ui.pages import init, fetch, show, search, apiToken, anaParse, pipeline, skills
 from pathlib import Path
+
 
 
 st.set_page_config(layout="wide")
 st.html("<style>[data-testid='stHeaderActionElements'] {display: none;}</style>")
+
+init_storage()
 
 INIT_PAGES = {
     "init": init.render,
@@ -19,7 +23,7 @@ PAGES = {
     "fetch"      : fetch.render, 
     "Analyse"    : anaParse.render,
     "Pipeline"   : pipeline.render,
-    "search"     : search.render, 
+    "search"     : search.render
 }
 
 # état initial

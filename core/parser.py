@@ -18,10 +18,10 @@ from dataclasses import dataclass, asdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from streamlit_autorefresh import st_autorefresh
 
-from api.client import api_request, RequestType, GetAllUsers, GetUserCv, ExportCv
-from core.storage import USER_DATA_DIR, TOKEN_PATH
-from core.database import *
-from core.parser import *
+# from api.client import api_request, RequestType, GetAllUsers, GetUserCv, ExportCv
+# from core.storage import USER_DATA_DIR, TOKEN_PATH
+# from core.database import *
+# from core.parser import *
 
 
 @dataclass
@@ -65,7 +65,13 @@ def get_exp_details(paragraphs, index, details_heading, company_heading, title_h
                 sub_text.append(para.text)
         else : 
             if para.text != "" and not re.search("\\d / \\d", para.text) and para.text != "THINK2MORROW" :
-                sub_text.append(para.text.strip("+ \t"))
+                if len(sub_text) != 0 and "techni" in sub_text[0] :
+                    if "+" in para.text :
+                        text = para.text.strip("+ \t")
+                        sub_text += (text.split(","))
+                else :
+                    text = para.text.strip("+ \t")
+                    sub_text += (text.split(","))
         index += 1
     if len(sub_text) != 0 :
         exp_details.details.append(sub_text)
@@ -95,8 +101,8 @@ def get_company_heading(paragraphs, index) :
     return p.style.name, index
 
 def parse_cv(file, cv_id) :
-    doc = docx.Document(io.BytesIO(file))
-    # doc = docx.Document(file)
+    # doc = docx.Document(io.BytesIO(file))
+    doc = docx.Document(file)
     reading_exp = -1
     reading_skills = -1
     title_heading  = get_title_heading_type(doc.paragraphs)
@@ -117,17 +123,18 @@ def parse_cv(file, cv_id) :
                 oIndex = get_exp_details(doc.paragraphs, index+3, details_heading, company_heading, title_heading, exp_details)
                 index = oIndex - 1
                 # exp.append(exp_details)
-                exp_dict = asdict(exp_details)
-                experiences.append(exp_dict)
+                # exp_dict = asdict(exp_details)
+                experiences.append(exp_details)
             elif title_heading in p.style.name :
                 reading_exp = 1
         if title_heading in p.style.name and ("competences" == unidecode(p.text.lower()) or "skills" == unidecode(p.text.lower())) : 
             skills, oIndex = parse_skills(doc.paragraphs, index+1, title_heading)
             index = oIndex - 1
         index += 1
-    exp_json = json.dumps(experiences)
-    skills_json = json.dumps(skills)
-    return exp_json, skills_json
+    # exp_json = json.dumps(experiences)
+    # skills_json = json.dumps(skills)
+    print(exp_details)
+    # return exp_json, skills_json
 
 
 def parse_worker(pipelineManager, selection, writer_queue):
@@ -170,3 +177,8 @@ def start_parse(pipelineManager, stop_event):
     existing_users = load_users_cv_dates()
     writer_queue, stop_event, writer_thread = start_writer()
     parse_worker(pipelineManager, stop_event, writer_queue)
+
+
+path = "C:\\Users\\cyrille.faucon\\.my_app\\data.db-x-cv_raw-4545978-data_raw.docx"
+
+parse_cv(path, 10)

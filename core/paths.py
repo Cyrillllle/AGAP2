@@ -8,4 +8,4 @@ def get_base_path() -> Path:
         return Path(__file__).resolve().parent.parent
 
 BASE_PATH = get_base_path()
-RESOURCES_PATH = BASE_PATH / "resources"
+RESOURCES_PATH = BASE_PATH / "ressources"

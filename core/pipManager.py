@@ -4,7 +4,7 @@ import threading
 
 from core.fetcher import start_fetch
 from core.parser import start_parse
-
+from core.analyzer import start_analyze
 
 @dataclass
 class PipelineStats:
@@ -25,7 +25,7 @@ class PipelineStats:
 class PipelineManager:
     def __init__(self):
         self.running     = False
-        self.step        = 2
+        self.step        = 3
         self.done        = False
         self.progress    = 0.0
         self.message     = ""
@@ -64,8 +64,9 @@ class PipelineManager:
 
 
             if self.step == 3 :
-                self._set_step(0.75, "Analyse des CV…")
-                # analyze_stats = analyze_parsed_cvs(stop_event=self._stop_event)
+                print("debut etape 2")
+                # self._set_step(0.75, "Analyse des CV…")
+                analyze_stats = start_analyze(self, stop_event=self._stop_event)
                 # self._merge_stats(analyze_stats)
 
                 self._finish("Pipeline terminé avec succès")

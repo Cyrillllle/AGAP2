@@ -15,7 +15,7 @@ from streamlit_autorefresh import st_autorefresh
 
 from api.client import api_request, RequestType, GetAllUsers, GetUserCv, ExportCv
 from core.storage import USER_DATA_DIR, TOKEN_PATH
-from core.database import init_db, start_writer, load_users_cv_dates
+from core.database import init_db, start_writer, load_users_cv_dates, cv_raw_exists
 
 
 @dataclass
@@ -40,7 +40,9 @@ if "worker_thread" not in st.session_state:
 
 
 def process_user(user, api_key, api_secret, existing_users, writer_queue, selection):
+    request_cv = 0
     start_time = time.time()
+    failed_fetch = 0
     # récupérer les CV
     response = api_request(
         api_secret,
@@ -51,7 +53,10 @@ def process_user(user, api_key, api_secret, existing_users, writer_queue, select
     cvs = json.loads(response.text)
 
     latest_cv_id = None
-    needs_parsing = 0
+    needs_parsing = 1
+    doc_ok = 0
+    cv_url = ""
+    cv_completion = 0
     latest_date = datetime.fromisoformat("2000-01-01T01:01:01+01:00")
 
     for item in cvs:
@@ -74,22 +79,24 @@ def process_user(user, api_key, api_secret, existing_users, writer_queue, select
         print(e)
     
     if skip_user :
-        return start_time
+        return start_time, "", 0
 
+    latest_cv_date = None
     if not latest_cv_id or not cv_completion :
-        latest_cv_date = None
         needs_parsing = 0
-        try :
-            writer_queue.put({"type": "upsert_user", "data": (user["id"],
-                                                        user["firstname"],
-                                                        user["lastname"],
-                                                        user["username"],
-                                                        latest_cv_id,
-                                                        latest_cv_date,
-                                                        needs_parsing)})
-        except Exception as e :
-            print(e)
-        return start_time
+        # try :
+        #     writer_queue.put({"type": "upsert_user", "data": (user["id"],
+        #                                                 user["firstname"],
+        #                                                 user["lastname"],
+        #                                                 user["username"])})
+            
+        #     writer_queue.put({"type": "upsert_cv", "data": (latest_cv_id,
+        #                                                 user["id"],
+        #                                                 latest_cv_date,
+        #                                                 needs_parsing)})
+        # except Exception as e :
+        #     print(e)
+        # return start_time
 
     else : 
         db_cv_date = existing_users.get(user["id"])
@@ -97,41 +104,64 @@ def process_user(user, api_key, api_secret, existing_users, writer_queue, select
         if db_cv_date != None :
             latest_db_cv_date = datetime.fromisoformat(db_cv_date)
 
-        if latest_date != latest_db_cv_date :
-            response = api_request(
-                api_secret,
-                RequestType.EXPORT_CV,
-                ExportCv(api_key, "", latest_cv_id)
-            )
+        if latest_date != latest_db_cv_date or not cv_raw_exists(latest_cv_id) :
+            request_cv = latest_cv_id
+            # response = api_request(
+            #     api_secret,
+            #     RequestType.EXPORT_CV,
+            #     ExportCv(api_key, "", latest_cv_id)
+            # )
 
-            if response.status_code == 200 :
-                doc_bytes = response.content
-                writer_queue.put({"type": "upsert_cv_raw", "data": (latest_cv_id, doc_bytes)})
-                needs_parsing = 1
-                latest_cv_date = latest_date.isoformat()
-            else : 
-                latest_cv_id = None
-                latest_cv_date = None
-                needs_parsing = 0
+            # if response.status_code == 200 :
+            #     doc_ok = 1
+            #     doc_bytes = response.content
+            #     # writer_queue.put({"type": "upsert_cv_raw", "data": (latest_cv_id, doc_bytes)})
+            #     needs_parsing = 1
+            #     latest_cv_date = latest_date.isoformat()
+            # else : 
+            #     print("error fetching raw cv")
+            #     print(user["id"])
+            #     print(response)
+            #     failed_fetch = user[id]
+            #     latest_cv_id = None
+            #     latest_cv_date = None
+            #     needs_parsing = 0
 
-            try :
-                writer_queue.put({"type": "upsert_user", "data": (user["id"],
-                                                            user["firstname"],
-                                                            user["lastname"],
-                                                            user["username"],
-                                                            latest_cv_id,
-                                                            latest_cv_date,
-                                                            needs_parsing)})
-            except Exception as e :
-                print(e)
+        else : 
+            return start_time, "", 0
 
-    return start_time
+    try :
+        print("write user")
+        writer_queue.put({"type": "upsert_user", "data": (user["id"],
+                                                user["firstname"],
+                                                user["lastname"],
+                                                user["username"])})
+        print("write cv")
+        writer_queue.put({"type": "upsert_cv", "data": (latest_cv_id,
+                                                    user["id"],
+                                                    latest_cv_date,
+                                                    needs_parsing)})
+        
+        # if doc_ok == 1 :
+        #     writer_queue.put({"type": "upsert_cv_raw", "data": (latest_cv_id, doc_bytes)})
+
+    except Exception as e :
+        print(e)
+
+    print("finished")
+
+    return start_time, failed_fetch, request_cv
+
+
+def download_cv_raw(user, api_key, api_secret, writer_queue) : 
+
+    return True
 
 
 def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, writer_queue, selection):
     try:
         pipelineManager.message = "Initialisation..."
-
+        retry_list = []
         users = []
         total = 1
         start = time.time()
@@ -161,8 +191,10 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
         start_time = time.time()
         total_time = 0
 
+        cv_request_list = []
 
-        with ThreadPoolExecutor(max_workers=8) as executor:
+
+        with ThreadPoolExecutor(max_workers=15) as executor:
             futures = [
                 executor.submit(process_user, user, api_key, api_secret, existing_users, writer_queue, selection)
                 for user in users
@@ -173,13 +205,16 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
                 #     state.message = "Arrêt demandé"
                 #     break
 
-                future.result()  # lève erreur si besoin
+                a, b, c = future.result()  # lève erreur si besoin
+                start_time = a
+                if c != "" :
+                    cv_request_list.append(c)
                 treated += 1
                 elapsed_time = time.time() - start_time
                 pipelineManager.progress = treated / total
                 total_time = total_time + elapsed_time
                 mean_treatmment_time = total_time / treated
-                remaining_time = mean_treatmment_time * (total - treated)
+                remaining_time = mean_treatmment_time/15 * (total - treated)
                 if remaining_time >= 60 :
                     estimation_mn = str(int(remaining_time/60))+"mn"
                 else : 
@@ -188,7 +223,7 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
                 estimation = estimation_mn + estimation_sec
                     
                 pipelineManager.message = f"{treated}/{total} profils traités. Environ {estimation} restantes"
-                start_time = time.time()
+                # start_time = time.time()
 
     except Exception as e:
         pipelineManager.error = str(e)
@@ -196,6 +231,7 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
 
     finally :
         print(("finally fetcher"))
+        print(cv_request_list)
         pipelineManager.step += 1
 
 
