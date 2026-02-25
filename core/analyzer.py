@@ -22,6 +22,40 @@ from api.client import api_request, RequestType, GetAllUsers, GetUserCv, ExportC
 from core.storage import USER_DATA_DIR, TOKEN_PATH
 from core.database import *
 from core.parser import *
+from core.skills import *
+
+
+@dataclass
+class Exp_skill :
+    skill : str
+    duration : int
+
+months_num_fr = {   1: 'Janvier',
+                    2: 'Février',
+                    3: 'Mars',
+                    4: 'Avril',
+                    5: 'Mai',
+                    6: 'Juin',
+                    7: 'Juillet',
+                    8: 'Août',
+                    9: 'Septembre',
+                    10: 'Octobre',
+                    11: 'Novembre',
+                    12: 'Décembre'}
+
+months_num_en = {   1: 'January',
+                    2: 'February',
+                    3: 'March',
+                    4: 'April',
+                    5: 'May',
+                    6: 'June',
+                    7: 'July',
+                    8: 'August',
+                    9: 'September',
+                    10: 'October',
+                    11: 'November',
+                    12: 'December'}
+
 
 
 def get_ngrams(token, n) :
@@ -33,100 +67,89 @@ def get_ngrams(token, n) :
 
 delimiters = [" ", ",", ":", "/", "(", ")"]
 
-# def searching(searched) :
-#     all = []
-#     for cv_id, exp, skills in read_parsed_data() :
-#         experience = json.loads(exp)
-#         # print(cv_id)
-#         for ex in experience :
-#             title = ex["title"]
-#             details = ex["details"]
-#             company = ex["company"]
-#             # if company != "" :
-#             #     if unidecode(searched.lower()) in unidecode(company.lower()) :
-#             #         print(title)
-#             #         print(company)
-
-#             # if unidecode(searched.lower()) in unidecode(title.lower()) :
-#             #     print(title)
-#             #     print(company)
-
-
-#             if len(details) != 0 :
-#                 for det in details :
-#                     if len(det) != 0 :
-#                         if "techni" in det[0].lower() :
-#                             # for func in searched :
-#                             search = unidecode(searched.lower())
-#                             # if match.extract(search, det, score_cutoff=0.4, limit=2) != [] :
-#                             #     print(match.extract(search, det, score_cutoff=0.4, limit=2))
-#                             #     print(cv_id)
-
-
-#                             for d in det :
-#                                 for _ in delimiters :
-#                                     if _ in d :
-#                                         d = d.replace(_, ";")
-#                                 tokens = d.split(";")
-#                                 for token in tokens :
-#                                     if token != "" and token not in all_token :
-#                                         all_token.append(token)
-#                                 if len(search.split(" ")) == 1 :
-#                                     for token in tokens :
-#                                         if search == unidecode(token.lower()) :
-#                                             if cv_id not in all :
-#                                                 all.append(cv_id)
-#                                             # print(cv_id)
-#                                             # print(token)
-#                                             break
-#                                 elif len(search.split(" ")) == 2 :
-#                                     bigrams = ngrams(tokens, 2)
-#                                     for bigram in bigrams :
-#                                         if search == unidecode(bigram.lower()) :
-#                                             print(bigram)
-#                                             print(cv_id)
-#                                             if cv_id not in all :
-#                                                 all.append(cv_id)
-#                                             break
-#                                 elif len(search.split(" ")) == 3 :
-#                                     trigrams = ngrams(tokens, 3)
-#                                     for trigram in trigrams :
-#                                         if search == unidecode(trigram.lower()) :
-#                                             print(trigram)
-#                                             print(cv_id)
-#                                             if cv_id not in all :
-#                                                 all.append(cv_id)
-#                                             break
-#     return all
-
-# A = searching("finops")
-# print(A)
 
 def search_skills(skills, tokens) :
     all = []
     try :
-        for category in skills :
-            for skill in skills[category] :
-                ngrams = get_ngrams(tokens, len(skill.split(" ")))
-                for ngram in ngrams :
-                    if unidecode(skill.lower()) == unidecode(ngram.lower()) :
-                        all.append(skill)
-                        # print(cv_id)
-                        # print(token)
-                        break
+        for skill_id in skills :
+            skill =skills[skill_id]
+            ngrams = get_ngrams(tokens, len(skill.split(" ")))
+            for ngram in ngrams :
+                if unidecode(skill.lower()) == unidecode(ngram.lower()) :
+                    all.append(skill_id)
+                    # print(cv_id)
+                    # print(token)
+                    break
     except Exception as e:
         print(e)
         print(skill)
         print(ngrams)
     return all
 
+
+def get_nb_months(duration) :
+    try :
+        posStart = 0
+        posMiddle = 0
+        if "à" in duration :
+            months_num = months_num_fr
+            posMiddle = duration.find("à")
+            durationType = "closed"
+        elif "to" in duration :
+            months_num = months_num_en
+            posMiddle = duration.find("to")
+            durationType = "closed"
+        elif "depuis" in unidecode(duration.lower()) :
+            months_num = months_num_fr
+            posStart = duration.find("depuis")
+            durationType = "opened"
+        elif "since" in unidecode(duration.lower()) :
+            months_num = months_num_en
+            posStart = duration.find("since")
+            durationType = "opened"
+
+        if durationType == "closed" :
+            start = unidecode(duration[:posMiddle].lower())
+            end = unidecode(duration[posMiddle:].lower())
+        elif durationType == "opened" :
+            start = unidecode(duration[posStart:].lower())
+            end = ""
+        for num in months_num :
+            if unidecode(months_num[num].lower()) in start :
+                start_month = num
+                start_year =  re.search(r"(\d{4})", start).group(1)
+            if unidecode(months_num[num].lower()) in end :
+                end_month = num
+                end_year =  re.search(r"(\d{4})", end).group(1)
+
+        start_date = datetime.strptime(f"{str(start_year)}-{str(start_month)}-01", '%Y-%m-%d').date()
+        if durationType == "closed" :
+            end_date = datetime.strptime(f"{str(end_year)}-{str(end_month)}-28", '%Y-%m-%d').date() 
+        elif durationType == "opened" :
+            end_date = datetime.today().date()
+
+        nb_months = round((end_date - start_date).days/30.44)
+    
+    except Exception as e :
+        nb_months = -1
+    
+    if nb_months < 0 :
+        nb_months = -1
+
+    return nb_months
+
+
 def analyze_cv(cv_parsed, cv_id, skills) :
     all = []
     experiences = json.loads(cv_parsed)
     for exp in experiences :
+        exp_skills = []
+        nb_months = -1
         title = exp["title"]
         details = exp["details"]
         company = exp["company"]
+        duration = exp["duration"]
+        nb_months = get_nb_months(duration)
         if len(details) != 0 :
             for detail in details :
                 if len(detail) > 1 and "techni" in detail[0].lower() :
@@ -136,8 +159,19 @@ def analyze_cv(cv_parsed, cv_id, skills) :
                                 d = d.replace(_, ";")
                         tokens = d.split(";")
                         if len(tokens) > 0 :
-                            all += search_skills(skills, tokens)
-    print(all)
+                            exp_skills += search_skills(skills, tokens)
+        if len(exp_skills) > 0 :
+            for skill in exp_skills :
+                added = False
+                for o_skill in all :
+                    if o_skill.skill == skill :
+                        added = True
+                        if nb_months != -1 :
+                            o_skill.duration += nb_months
+                        break
+                if added == False :
+                    all.append(Exp_skill(skill, nb_months))
+
     return all
 
 def analyze_worker(pipelineManager, selection, writer_queue, skills):
@@ -154,8 +188,11 @@ def analyze_worker(pipelineManager, selection, writer_queue, skills):
         start_time = time.time()
         all = analyze_cv(experiences, cv_id, skills)
         if all == [] :
-            print(cv_id)
+            # print(cv_id)
             cpt += 1
+        else :
+            for exp_skill in all :
+                writer_queue.put({"type": "upsert_cv_skill", "data": (cv_id, exp_skill.skill, exp_skill.duration)})
         elapsed_time = time.time() - start_time
         treated += 1
         total_time = total_time + elapsed_time
@@ -181,9 +218,8 @@ def analyze_worker(pipelineManager, selection, writer_queue, skills):
 
 def start_analyze(pipelineManager, stop_event):
     init_db()
+    temp()
     existing_users = load_users_cv_dates()
-    file = open(SKILLS_PATH)
-    skills = json.load(file)
-    file.close()
+    skills = read_skills()
     writer_queue, stop_event, writer_thread = start_writer()
     analyze_worker(pipelineManager, stop_event, writer_queue, skills)

@@ -57,6 +57,12 @@ def init_db() :
                 'PRIMARY KEY(cv_id, skill_id),' \
                 'FOREIGN KEY(cv_id) REFERENCES cv(id) ON DELETE CASCADE, ' \
                 'FOREIGN KEY(skill_id) REFERENCES skills(id))')
+    
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_skill_name ON skills(name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cv_user_id ON cv(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cvskill_skill_id ON cv_skill(skill_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cvskill_cv_id ON cv_skill(cv_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cvskill_months ON cv_skill(months)")
     print("init done")
     cursor.close()
     conn.commit()
@@ -91,21 +97,21 @@ def db_raw_writer(writer_queue, stop_event) :
             
             elif kind == "upsert_cv" :
                 print("upsert cv")
-                cursor.execute('INSERT OR REPLACE INTO cv (id, user_id, cv_date, needs_parsing)' \
+                cursor.execute('INSERT INTO cv (id, user_id, cv_date, needs_parsing)' \
                             'VALUES (?, ?, ?, ?) '
                             'ON CONFLICT(user_id) DO UPDATE SET ' \
                                     'cv_date = excluded.cv_date, ' \
                                     'needs_parsing = excluded.needs_parsing', task["data"])
                 
             elif kind == "upsert_cv_raw" :
-                cursor.execute('INSERT OR REPLACE INTO cv_raw (cv_id, data_raw )' \
+                cursor.execute('INSERT INTO cv_raw (cv_id, data_raw )' \
                             'VALUES (?, ?) ' \
                                 'ON CONFLICT(cv_id) DO UPDATE SET ' \
                                 '   data_raw = excluded.data_raw', task["data"])
                 
             elif kind == "upsert_cv_parsed" :
                 cursor.execute("""
-                            INSERT OR REPLACE INTO cv_parsed (cv_id, exp, skills) 
+                            INSERT INTO cv_parsed (cv_id, exp, skills) 
                             VALUES (?, ?, ?) 
                             ON CONFLICT(cv_id) DO UPDATE SET 
                                     exp = excluded.exp, 
@@ -113,14 +119,14 @@ def db_raw_writer(writer_queue, stop_event) :
                 
             elif kind == "upsert_skills" :
                 cursor.execute("""
-                            INSERT OR REPLACE INTO skills (name, category) 
-                            VALUES (?, ?, ?) 
+                            INSERT INTO skills (name, category) 
+                            VALUES (?, ?) 
                             ON CONFLICT(name) DO UPDATE SET 
                                     category = excluded.category""", task["data"])
                 
             elif kind == "upsert_cv_skill" : 
                 cursor.execute("""
-                            INSERT OR REPLACE INTO cv_skills (cv_id, skill_id, months) 
+                            INSERT INTO cv_skill (cv_id, skill_id, months) 
                             VALUES (?, ?, ?) 
                             ON CONFLICT(cv_id, skill_id) DO UPDATE SET 
                                     months = excluded.months""", task["data"])
@@ -242,16 +248,44 @@ def read_skills(batch_size = 50) :
     cursor = conn.cursor()
 
     cursor.execute("""
-                   SELECT r.name, r.category 
+                   SELECT r.id, r.name
                    FROM skills r
                    """)
-
-    while True :
-        rows = cursor.fetchmany(batch_size)
-        if not rows :
-            break
-        for name, category in rows :
-            yield name, category
+    
+    rows = cursor.fetchall()
 
     cursor.close()
     conn.close()
+
+    return {skill_id: skill_name for skill_id, skill_name in rows}
+
+
+
+def temp() :
+    print("suppression")
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("""DELETE FROM cv_skill""")
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def search(name, nb_months) :
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("""SELECT u.id, u.first_name
+                    FROM users u
+                    WHERE u.id IN (
+                    SELECT c.user_id
+                    FROM cv c
+                    JOIN cv_skill cs ON cs.cv_id = c.id
+                    JOIN skills s ON s.id = cs.skill_id
+                    WHERE s.name = ? AND cs.months >= ?)""",(name, nb_months))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return {user_id : user_name for user_id, user_name in rows}
