@@ -47,7 +47,7 @@ class ExportCv :
     apikey     : str
     timestamp  : str
     id         : str
-    # format     : str
+    format     : str
     anonymized : str = "false"
 
 @dataclass
@@ -75,8 +75,8 @@ ENDPOINTS = {
         "path_params": ["id"]
     },
     "ExportCv": {
-        "path": "/api/v1/cv/{id}/export/doc",
-        "path_params": ["id"]
+        "path": "/api/v1/cv/{id}/export/{format}",
+        "path_params": ["id", "format"]
     }
 }
 
@@ -120,7 +120,6 @@ def split_params(params, path_params):
     return query_params
 
 def api_request(secret, request_type : RequestType, params) :
-    endpoint = ENDPOINTS[request_type]
     dict_params = construct_params_dict(params)
     query_params = dict_params
 

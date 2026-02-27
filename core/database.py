@@ -35,7 +35,8 @@ def init_db() :
                     
     cursor.execute('CREATE TABLE IF NOT EXISTS cv_raw (' \
                 'cv_id INTEGER PRIMARY KEY, ' \
-                'data_raw BLOB,' \
+                'data_raw BLOB, ' \
+                'cv_pdf BLOB, ' \
                 'FOREIGN KEY(cv_id) REFERENCES cv(id) ON DELETE CASCADE)')
     
     cursor.execute('CREATE TABLE IF NOT EXISTS cv_parsed (' \
@@ -104,10 +105,11 @@ def db_raw_writer(writer_queue, stop_event) :
                                     'needs_parsing = excluded.needs_parsing', task["data"])
                 
             elif kind == "upsert_cv_raw" :
-                cursor.execute('INSERT INTO cv_raw (cv_id, data_raw )' \
-                            'VALUES (?, ?) ' \
+                cursor.execute('INSERT INTO cv_raw (cv_id, data_raw, cv_pdf )' \
+                            'VALUES (?, ?, ?) ' \
                                 'ON CONFLICT(cv_id) DO UPDATE SET ' \
-                                '   data_raw = excluded.data_raw', task["data"])
+                                '   data_raw = excluded.data_raw, ' \
+                                '   cv_pdf = excluded.cv_pdf', task["data"])
                 
             elif kind == "upsert_cv_parsed" :
                 cursor.execute("""
@@ -273,19 +275,86 @@ def temp() :
     conn.close()
 
 
-def search(name, nb_months) :
+# def search(skill, nb_months) :
+#     conn = connect_ddb(DB_PATH)
+#     cursor = conn.cursor()
+    
+#     cursor.execute("""SELECT u.id, u.first_name, u.last_name
+#                     FROM users u
+#                     WHERE u.id IN (
+#                     SELECT c.user_id
+#                     FROM cv c
+#                     JOIN cv_skill cs ON cs.cv_id = c.id
+#                     JOIN skills s ON s.id = cs.skill_id
+#                     WHERE s.name = ? AND cs.months >= ?)""",(skill, nb_months))
+#     rows = cursor.fetchall()
+#     cursor.close()
+#     conn.close()
+#     return {user_id : user_name for user_id, user_name in rows}
+
+
+def search_multi(required_skills, optional_skills, min_months):
     conn = connect_ddb(DB_PATH)
     cursor = conn.cursor()
-    
-    cursor.execute("""SELECT u.id, u.first_name
-                    FROM users u
-                    WHERE u.id IN (
-                    SELECT c.user_id
-                    FROM cv c
-                    JOIN cv_skill cs ON cs.cv_id = c.id
-                    JOIN skills s ON s.id = cs.skill_id
-                    WHERE s.name = ? AND cs.months >= ?)""",(name, nb_months))
+
+    req_placeholders = ",".join("?" for _ in required_skills)
+    opt_placeholders = ",".join("?" for _ in optional_skills) if optional_skills else ""
+
+    all_skills = required_skills + optional_skills
+    all_placeholders = ",".join("?" for _ in all_skills)
+
+    query = f"""
+    WITH filtered AS (
+        SELECT 
+            u.id,
+            u.first_name,
+            u.last_name,
+            s.name,
+            cs.months
+        FROM users u
+        JOIN cv c ON c.user_id = u.id
+        JOIN cv_skill cs ON cs.cv_id = c.id
+        JOIN skills s ON s.id = cs.skill_id
+        WHERE s.name IN ({all_placeholders})
+          AND cs.months >= ?
+    ),
+    scored AS (
+        SELECT
+            id,
+            first_name,
+            last_name,
+            SUM(
+                CASE
+                    WHEN name IN ({req_placeholders}) THEN months
+                    WHEN name IN ({opt_placeholders}) THEN months + 10
+                    ELSE 0
+                END
+            ) AS score,
+            COUNT(DISTINCT CASE
+                WHEN name IN ({req_placeholders}) THEN name
+            END) AS required_count
+        FROM filtered
+        GROUP BY id
+    )
+    SELECT id, first_name, last_name
+    FROM scored
+    WHERE required_count = ?
+    ORDER BY score DESC
+    """
+
+    params = (
+        all_skills +
+        [min_months] +
+        required_skills +
+        optional_skills +
+        required_skills +
+        [len(required_skills)]
+    )
+
+    cursor.execute(query, params)
     rows = cursor.fetchall()
+
     cursor.close()
     conn.close()
-    return {user_id : user_name for user_id, user_name in rows}
+
+    return [f"{first} {last}" for _, first, last in rows]

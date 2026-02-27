@@ -219,6 +219,7 @@ def analyze_worker(pipelineManager, selection, writer_queue, skills):
 def start_analyze(pipelineManager, stop_event):
     init_db()
     temp()
+    # update_skills_db()
     existing_users = load_users_cv_dates()
     skills = read_skills()
     writer_queue, stop_event, writer_thread = start_writer()
