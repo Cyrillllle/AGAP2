@@ -7,7 +7,7 @@ def render() :
     # st.markdown("## Initialisation")
 
     with st.spinner("Recherche de mise à jour..."):
-        time.sleep(1)
+        time.sleep(0.5)
         success = True
         if success:
             st.session_state.current_page = "token"

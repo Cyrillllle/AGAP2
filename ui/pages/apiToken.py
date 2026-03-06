@@ -58,7 +58,7 @@ def token_get() :
             token.close()
             message.success("Token enregistré avec succès")
             with st.spinner("Redirection en cours...") :
-                time.sleep(4)
+                time.sleep(0.5)
                 st.session_state.current_page = "show"
                 st.rerun()
         else :
@@ -68,7 +68,7 @@ def token_get() :
 
 def test_token(key, secret) :
     with st.spinner("Vérification du token...") :
-        time.sleep(2)
+        time.sleep(0.5)
         try : 
             status_code = api_request(secret, RequestType.GET_ALL_USERS , GetAllUsers(key, "", "admin", 1, 100)).status_code
             if status_code == 200 :

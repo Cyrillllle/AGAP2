@@ -25,7 +25,7 @@ class PipelineStats:
 class PipelineManager:
     def __init__(self):
         self.running     = False
-        self.step        = 3
+        self.step        = 1
         self.done        = False
         self.progress    = 0.0
         self.message     = ""

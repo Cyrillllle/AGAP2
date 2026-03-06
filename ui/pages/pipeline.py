@@ -11,53 +11,53 @@ if "pipeline_manager" not in st.session_state:
 
 
 
-def render():
-    pm = st.session_state.pipeline_manager
 
-    st.title("Gestion de la base de données")
+pm = st.session_state.pipeline_manager
 
-    container = st.container()
+st.title("Gestion de la base de données")
 
-    select_all = st.checkbox(
-        "Select all",
-        disabled=pm.running,
-        key="select_all_checkbox"
-    )
+container = st.container()
 
-    selection = container.selectbox(
-        "Filter les profils à télécharger :",
-        ["", "Industrie", "IT"],
-        disabled=pm.running or select_all,
-        key="filter_selectbox"
-    )
+select_all = st.checkbox(
+    "Select all",
+    disabled=pm.running,
+    key="select_all_checkbox"
+)
 
-    if not pm.running:
-        selected = "all" if select_all else selection
-        run_button = st.button("Créer/mettre à jour la base de données", disabled=(selected == ""), key="start_button")
-        if run_button :
-            threading.Thread(target=pm.run, args=(selected,), daemon=True).start()
-            pm.running = True
-    else:
-        st.button("Stop", on_click=pm.stop, key="stop_button")
+selection = container.selectbox(
+    "Filter les profils à télécharger :",
+    ["", "Industrie", "IT"],
+    disabled=pm.running or select_all,
+    key="filter_selectbox"
+)
 
-    if pm.running:
-        st.progress(pm.progress, text=pm.message)
-        step_status = st.status(f"Etape {pm.step}/3", expanded=True)
-        if pm.step == 1 :
-            step_status.write("Téléchargement des CV")
-        elif pm.step == 2 :
-            step_status.write("~~Téléchargement des CV~~")
-            step_status.write("Dépouillement des CV")
-        st_autorefresh(interval=500, key="refresh_job")
+if not pm.running:
+    selected = "all" if select_all else selection
+    run_button = st.button("Créer/mettre à jour la base de données", disabled=(selected == ""), key="start_button")
+    if run_button :
+        threading.Thread(target=pm.run, args=(selected,), daemon=True).start()
+        pm.running = True
+else:
+    st.button("Stop", on_click=pm.stop, key="stop_button")
 
-    if pm.done == True and pm.running == False :
-        print(pm.done)
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print(pm.running)
-        st.success("Traitement terminé")
+if pm.running:
+    st.progress(pm.progress, text=pm.message)
+    step_status = st.status(f"Etape {pm.step}/3", expanded=True)
+    if pm.step == 1 :
+        step_status.write("Téléchargement des CV")
+    elif pm.step == 2 :
+        step_status.write("~~Téléchargement des CV~~")
+        step_status.write("Dépouillement des CV")
+    st_autorefresh(interval=500, key="refresh_job")
 
-    if pm.error:
-        st.error(pm.error)
+if pm.done == True and pm.running == False :
+    print(pm.done)
+    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    print(pm.running)
+    st.success("Traitement terminé")
+
+if pm.error:
+    st.error(pm.error)
 
     # selection = st.selectbox(
     #     "Filtrer les profils",

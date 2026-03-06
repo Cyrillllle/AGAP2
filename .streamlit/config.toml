@@ -1,0 +1,14 @@
+[client]
+toolbarMode = "viewer"
+
+
+[theme]
+primaryColor = "#1e90ff"             # Buttons, links, active elements (bleu vif pro)
+backgroundColor = "#121212"          # Main content background (sombre, élégant)
+secondaryBackgroundColor = "#1e1e1e" # Widget backgrounds, code blocks
+textColor = "#e0e0e0"                # Body text (clair sur sombre)
+# Optional refinements
+linkColor = "#1e90ff"                # Markdown links (vif mais cohérent)
+codeTextColor = "#f5f5f5"            # Inline code text
+codeBackgroundColor = "#2a2a2a"      # Code block background (sombre mais lisible)
+borderColor = "#333333"              # Widget borders (discret mais défini)

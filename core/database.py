@@ -245,7 +245,7 @@ def read_parsed_data(batch_size = 50) :
     conn.close()
 
 
-def read_skills(batch_size = 50) :
+def read_skills_by_id(batch_size = 50) :
     conn = connect_ddb(DB_PATH)
     cursor = conn.cursor()
 
@@ -260,6 +260,29 @@ def read_skills(batch_size = 50) :
     conn.close()
 
     return {skill_id: skill_name for skill_id, skill_name in rows}
+
+def read_skills_by_cat() :
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+                   SELECT r.name, r.category
+                   FROM skills r
+                   """)
+    
+    rows = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    result = {}
+
+    for skill_name, skill_cat in rows : 
+        if skill_cat not in result :
+            result.update({skill_cat : []})
+        result[skill_cat].append(skill_name)
+
+    return result
 
 
 
@@ -293,15 +316,101 @@ def temp() :
 #     return {user_id : user_name for user_id, user_name in rows}
 
 
+# def search_multi(required_skills, optional_skills, min_months):
+#     conn = connect_ddb(DB_PATH)
+#     cursor = conn.cursor()
+
+#     req_placeholders = ",".join("?" for _ in required_skills)
+#     opt_placeholders = ",".join("?" for _ in optional_skills) if optional_skills else ""
+
+#     all_skills = required_skills + optional_skills
+#     all_placeholders = ",".join("?" for _ in all_skills)
+
+#     query = f"""
+#     WITH filtered AS (
+#         SELECT 
+#             u.id,
+#             u.first_name,
+#             u.last_name,
+#             s.name,
+#             cs.months
+#         FROM users u
+#         JOIN cv c ON c.user_id = u.id
+#         JOIN cv_skill cs ON cs.cv_id = c.id
+#         JOIN skills s ON s.id = cs.skill_id
+#         WHERE s.name IN ({all_placeholders})
+#           AND cs.months >= ?
+#     ),
+#     scored AS (
+#         SELECT
+#             id,
+#             first_name,
+#             last_name,
+#             SUM(
+#                 CASE
+#                     WHEN name IN ({req_placeholders}) THEN months
+#                     WHEN name IN ({opt_placeholders}) THEN months + 10
+#                     ELSE 0
+#                 END
+#             ) AS score,
+#             COUNT(DISTINCT CASE
+#                 WHEN name IN ({req_placeholders}) THEN name
+#             END) AS required_count
+#         FROM filtered
+#         GROUP BY id
+#     )
+#     SELECT id, first_name, last_name, id
+#     FROM scored
+#     WHERE required_count = ?
+#     ORDER BY score DESC
+#     """
+
+#     params = (
+#         all_skills +
+#         [min_months] +
+#         required_skills +
+#         optional_skills +
+#         required_skills +
+#         [len(required_skills)]
+#     )
+
+#     cursor.execute(query, params)
+#     rows = cursor.fetchall()
+
+#     cursor.close()
+#     conn.close()
+
+#     return [f"{first} {last} {pdf}" for _, first, last, pdf in rows]
+
+
+
+def load_pdf(cv_id):
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT cv_pdf
+        FROM cv_raw
+        WHERE cv_id = ?
+    """, (cv_id,))
+
+    pdf = cursor.fetchone()[0]
+
+    cursor.close()
+    conn.close()
+
+    return pdf
+
+
 def search_multi(required_skills, optional_skills, min_months):
     conn = connect_ddb(DB_PATH)
     cursor = conn.cursor()
 
+    all_skills = required_skills + optional_skills
+    placeholders = ",".join("?" for _ in all_skills)
+
     req_placeholders = ",".join("?" for _ in required_skills)
     opt_placeholders = ",".join("?" for _ in optional_skills) if optional_skills else ""
-
-    all_skills = required_skills + optional_skills
-    all_placeholders = ",".join("?" for _ in all_skills)
 
     query = f"""
     WITH filtered AS (
@@ -309,13 +418,14 @@ def search_multi(required_skills, optional_skills, min_months):
             u.id,
             u.first_name,
             u.last_name,
+            c.id AS cv_id,
             s.name,
             cs.months
         FROM users u
         JOIN cv c ON c.user_id = u.id
         JOIN cv_skill cs ON cs.cv_id = c.id
         JOIN skills s ON s.id = cs.skill_id
-        WHERE s.name IN ({all_placeholders})
+        WHERE s.name IN ({placeholders})
           AND cs.months >= ?
     ),
     scored AS (
@@ -323,6 +433,8 @@ def search_multi(required_skills, optional_skills, min_months):
             id,
             first_name,
             last_name,
+            cv_id,
+            SUM(months) AS total_months,
             SUM(
                 CASE
                     WHEN name IN ({req_placeholders}) THEN months
@@ -334,9 +446,9 @@ def search_multi(required_skills, optional_skills, min_months):
                 WHEN name IN ({req_placeholders}) THEN name
             END) AS required_count
         FROM filtered
-        GROUP BY id
+        GROUP BY id, cv_id
     )
-    SELECT id, first_name, last_name
+    SELECT id, first_name, last_name, cv_id, total_months
     FROM scored
     WHERE required_count = ?
     ORDER BY score DESC
@@ -353,8 +465,76 @@ def search_multi(required_skills, optional_skills, min_months):
 
     cursor.execute(query, params)
     rows = cursor.fetchall()
-
     cursor.close()
     conn.close()
 
-    return [f"{first} {last}" for _, first, last in rows]
+    return [
+        {
+            "user_id": r[0],
+            "name": f"{r[1]} {r[2]}",
+            "cv_id": r[3],
+            "total_months": r[4]
+        }
+        for r in rows
+    ]
+
+
+def get_user_skills(cv_id):
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT s.name, cs.months
+        FROM cv_skill cs
+        JOIN skills s ON s.id = cs.skill_id
+        WHERE cs.cv_id = ?
+        ORDER BY cs.months DESC
+    """, (cv_id,))
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return rows
+
+
+def get_available_skills(selected_skills):
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+
+    if not selected_skills:
+        cursor.execute("SELECT DISTINCT name FROM skills ORDER BY name")
+        skills = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return skills
+
+    placeholders = ",".join("?" for _ in selected_skills)
+
+    query = f"""
+    SELECT DISTINCT s2.name
+    FROM users u
+    JOIN cv c ON c.user_id = u.id
+    JOIN cv_skill cs ON cs.cv_id = c.id
+    JOIN skills s ON s.id = cs.skill_id
+    JOIN cv_skill cs2 ON cs2.cv_id = c.id
+    JOIN skills s2 ON s2.id = cs2.skill_id
+    WHERE u.id IN (
+        SELECT u2.id
+        FROM users u2
+        JOIN cv c2 ON c2.user_id = u2.id
+        JOIN cv_skill cs3 ON cs3.cv_id = c2.id
+        JOIN skills s3 ON s3.id = cs3.skill_id
+        WHERE s3.name IN ({placeholders})
+        GROUP BY u2.id
+        HAVING COUNT(DISTINCT s3.name) = ?
+    )
+    ORDER BY s2.name
+    """
+
+    params = selected_skills + [len(selected_skills)]
+
+    cursor.execute(query, params)
+    skills = [row[0] for row in cursor.fetchall()]
+
+    conn.close()
+    return skills
