@@ -19,6 +19,19 @@ INIT_PAGES = {
     # "detail": detail.render,
 }
 
+@st.dialog("Attention")
+def leaving_page(current_page) :
+    leaving_confirm = False
+    st.write("Les modifications non sauvegardées seront perdues")
+    col1, col2 = st.columns([1,1])
+    with col2 :
+        if st.button("Confirmer", width="stretch"):
+            leaving_confirm = True
+    with col1 : 
+        if st.button("Annuler", width="stretch") :
+            st.switch_page(current_page)
+            st.rerun()
+
 # PAGES = {
 #     "show"       : show.render, 
 #     "fetch"      : fetch.render, 
@@ -31,8 +44,12 @@ INIT_PAGES = {
 # état initial
 if "current_page" not in st.session_state:
     st.session_state.current_page = "init"
-#     # affichage de la page courante
+if "previous_page" not in st.session_state : 
+    st.session_state.previous_page = ""
 
+
+if "skills_modified" not in st.session_state :
+    st.session_state.skills_modified = []
 if "available_skills" not in st.session_state :
     st.session_state.available_skills = []
 if "selected_skills" not in st.session_state :
@@ -45,15 +62,14 @@ if "selected_skills" not in st.session_state :
 #     selection = st.sidebar.radio("Aller à", list(PAGES.keys()))
 #     PAGES[selection]()
 
-print("aaa")
-
 pages = {
     "Profils": [
         st.Page("ui/pages/pipeline.py", title="Gérer la base de données"),
         # st.Page("manage_account.py", title="Manage your account"),
     ],
     "Jobs": [
-        st.Page("ui/pages/jobs.py", title="Learn about us"),
+        st.Page("ui/pages/jobs.py", title="Jobs"),
+        st.Page("ui/pages/skills.py", title="Skills"),
         # st.Page("trial.py", title="Try it out"),
     ],
     "Search": [
@@ -62,10 +78,23 @@ pages = {
     ],
 }
 
-
+future_page = ""
 if st.session_state.current_page == "init" or st.session_state.current_page == "token" or st.session_state.current_page == "token_input" :
     INIT_PAGES[st.session_state.current_page]()
 else :
-    st.session_state.current_page = st.navigation(pages, position="sidebar")
-    st.session_state.current_page.run()
+    st.session_state.previous_page = st.session_state.current_page
+    future_page = st.navigation(pages, position="sidebar")
+    print(future_page.title)
+    if st.session_state.previous_page.title == "Skills" and len(st.session_state.skills_modified) != 0 and future_page.title != "Skills" : 
+        print("skiiiiiiiiiiiiillllllls")
+        if st.session_state.skills_saved == True :
+            print("fichier sauvegardé")
+        else :
+            leaving_confirm = leaving_page(st.session_state.previous_page)
+            future_page = st.session_state.current_page
+            print("attention fichier non sauvegardé")
+    else :
+        st.session_state.current_page = future_page
+        # st.session_state.skills_modified = []
+        st.session_state.current_page.run()
 

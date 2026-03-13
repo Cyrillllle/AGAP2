@@ -3,12 +3,13 @@ toolbarMode = "viewer"
 
 
 [theme]
-primaryColor = "#1e90ff"             # Buttons, links, active elements (bleu vif pro)
-backgroundColor = "#121212"          # Main content background (sombre, élégant)
-secondaryBackgroundColor = "#1e1e1e" # Widget backgrounds, code blocks
-textColor = "#e0e0e0"                # Body text (clair sur sombre)
+primaryColor = "#ff6b6b"             # Corail vibrant (boutons / actions)
+backgroundColor = "#0b0f19"          # Fond nuit profond
+secondaryBackgroundColor = "#373b4499" # Cartes / widgets
+textColor = "#f1f5f9"                # Texte clair lisible
+
 # Optional refinements
-linkColor = "#1e90ff"                # Markdown links (vif mais cohérent)
-codeTextColor = "#f5f5f5"            # Inline code text
-codeBackgroundColor = "#2a2a2a"      # Code block background (sombre mais lisible)
-borderColor = "#333333"              # Widget borders (discret mais défini)
+linkColor = "#ff8f6b"                # Pêche lumineux pour les liens
+codeTextColor = "#e6edf3"
+codeBackgroundColor = "#1b2135"      # Fond code légèrement bleuté
+borderColor = "#2a3147"              # Bordures visibles mais élégantes

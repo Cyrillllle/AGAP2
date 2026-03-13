@@ -16,19 +16,19 @@ def show_cv(cv_id):
 # def render() :
 st.title("Recherche")
 
-data = {
-'Region': ['North America', 'North America', 'North America', 'Europe', 'Europe', 'Asia', 'Asia'],
-'Country': ['USA', 'USA', 'Canada', 'Germany', 'France', 'Japan', 'China'],
-'City': ['New York', 'Los Angeles', 'Toronto', 'Berlin', 'Paris', 'Tokyo', 'Beijing']
-}
+# data = {
+# 'Region': ['North America', 'North America', 'North America', 'Europe', 'Europe', 'Asia', 'Asia'],
+# 'Country': ['USA', 'USA', 'Canada', 'Germany', 'France', 'Japan', 'China'],
+# 'City': ['New York', 'Los Angeles', 'Toronto', 'Berlin', 'Paris', 'Tokyo', 'Beijing']
+# }
 
-df = pd.DataFrame(data)
-dynamic_filters = DynamicFilters(df, filters=['Region', 'Country', 'City'])
+# df = pd.DataFrame(data)
+# dynamic_filters = DynamicFilters(df, filters=['Region', 'Country', 'City'])
 
-with st.sidebar:
-    dynamic_filters.display_filters()
+# with st.sidebar:
+#     dynamic_filters.display_filters()
 
-dynamic_filters.display_df()
+# dynamic_filters.display_df()
 
 st.text_input("Rechercher un profil")
 
