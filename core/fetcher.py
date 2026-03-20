@@ -51,7 +51,7 @@ def process_user(user, api_key, api_secret, existing_users, writer_queue, select
     )
 
     cvs = json.loads(response.text)
-
+    
     latest_cv_id = None
     needs_parsing = 1
     doc_ok = 0
@@ -84,19 +84,6 @@ def process_user(user, api_key, api_secret, existing_users, writer_queue, select
     latest_cv_date = None
     if not latest_cv_id or not cv_completion :
         needs_parsing = 0
-        # try :
-        #     writer_queue.put({"type": "upsert_user", "data": (user["id"],
-        #                                                 user["firstname"],
-        #                                                 user["lastname"],
-        #                                                 user["username"])})
-            
-        #     writer_queue.put({"type": "upsert_cv", "data": (latest_cv_id,
-        #                                                 user["id"],
-        #                                                 latest_cv_date,
-        #                                                 needs_parsing)})
-        # except Exception as e :
-        #     print(e)
-        # return start_time
 
     else : 
         db_cv_date = existing_users.get(user["id"])
@@ -107,58 +94,29 @@ def process_user(user, api_key, api_secret, existing_users, writer_queue, select
         if latest_date != latest_db_cv_date or not cv_raw_exists(latest_cv_id) and latest_date != datetime.fromisoformat("2000-01-01T01:01:01+01:00") :
             request_cv = latest_cv_id
             latest_cv_date = latest_date
-            # response = api_request(
-            #     api_secret,
-            #     RequestType.EXPORT_CV,
-            #     ExportCv(api_key, "", latest_cv_id)
-            # )
-
-            # if response.status_code == 200 :
-            #     doc_ok = 1
-            #     doc_bytes = response.content
-            #     # writer_queue.put({"type": "upsert_cv_raw", "data": (latest_cv_id, doc_bytes)})
-            #     needs_parsing = 1
-            #     latest_cv_date = latest_date.isoformat()
-            # else : 
-            #     print("error fetching raw cv")
-            #     print(user["id"])
-            #     print(response)
-            #     failed_fetch = user[id]
-            #     latest_cv_id = None
-            #     latest_cv_date = None
-            #     needs_parsing = 0
 
         else : 
-            print("else")
-            print(latest_date)
-            print(latest_db_cv_date)
             return start_time, "", 0
 
     try :
-        # print("write user")
         writer_queue.put({"type": "upsert_user", "data": (user["id"],
                                                 user["firstname"],
                                                 user["lastname"],
                                                 user["username"])})
-        # print("write cv")
         writer_queue.put({"type": "upsert_cv", "data": (latest_cv_id,
                                                     user["id"],
                                                     latest_cv_date,
                                                     needs_parsing)})
-        
-        # if doc_ok == 1 :
-        #     writer_queue.put({"type": "upsert_cv_raw", "data": (latest_cv_id, doc_bytes)})
+    
 
     except Exception as e :
         print(e)
 
-    # print("finished")
 
     return start_time, failed_fetch, request_cv
 
 
 def download_cv_raw(cv_request, api_key, api_secret, writer_queue) : 
-    print("downloading")
     start_time = time.time()
     response_doc = api_request(
         api_secret,
@@ -172,7 +130,6 @@ def download_cv_raw(cv_request, api_key, api_secret, writer_queue) :
         ExportCv(api_key, "", cv_request, "pdf")
     )
     
-    print("reponses")
     if response_doc.status_code == 200 and response_pdf.status_code == 200 :
         doc_bytes = response_doc.content
         pdf_bytes = response_pdf.content
@@ -182,8 +139,18 @@ def download_cv_raw(cv_request, api_key, api_secret, writer_queue) :
         print(response_pdf.status_code)
         print("error fetching raw cv")
     
-    print("download ended")
     return start_time
+
+
+def get_all_users(page, api_key, api_secret) :
+    response = api_request(
+                api_secret,
+                RequestType.GET_ALL_USERS,
+                GetAllUsers(api_key, "", "user", page, 100)
+            )
+    data = json.loads(response.text)
+    return data.get("users", [])
+
 
 def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, writer_queue, selection):
     try:
@@ -194,24 +161,29 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
         start = time.time()
         timeout = 60
         page = 1
-        while len(users) < total :
-            response = api_request(
+
+        response = api_request(
                 api_secret,
                 RequestType.GET_ALL_USERS,
                 GetAllUsers(api_key, "", "user", page, 100)
             )
+        data = json.loads(response.text)
+        total = data["total"]
 
-            data = json.loads(response.text)
-            users = users + data["users"]
-            total = data["total"]
-            timeout = total / 100
-            elapsed_time = time.time() - start
+        with ThreadPoolExecutor(max_workers=15) as executor:
+            futures = [
+                executor.submit(get_all_users, page, api_key, api_secret)
+                for page in range(1,int(total/100)+2)
+            ]
 
-            page += 1
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    users += result
 
-            if elapsed_time > timeout :
-                print("message d'erreur")
-                break
+                pipelineManager.progress = int(len(users) / total)
+
+        pipelineManager.step += 1
 
         treated = 0
         total = len(users)
@@ -219,7 +191,6 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
         total_time = 0
 
         cv_request_list = []
-
 
         with ThreadPoolExecutor(max_workers=15) as executor:
             futures = [
@@ -256,6 +227,8 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
         pipelineManager.error = str(e)
         print(e)
     try : 
+
+        pipelineManager.step += 1
         treated = 0
         total = len(cv_request_list)
         start_time = time.time()
@@ -286,7 +259,6 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
                     estimation_mn = ""
                 estimation_sec = str(int((remaining_time%60))) + "s"
                 estimation = estimation_mn + estimation_sec
-                print(estimation)
                     
                 pipelineManager.message = f"{treated}/{total} profils traités. Environ {estimation} restantes"
                 # start_time = time.time()
@@ -299,7 +271,7 @@ def fetch_profiles_worker(pipelineManager, api_key, api_secret, existing_users, 
         print(("finally fetcher"))
         
 
-        print(cv_request_list)
+        # print(cv_request_list)
         pipelineManager.step += 1
 
 

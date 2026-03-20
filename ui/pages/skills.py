@@ -6,6 +6,7 @@ from unidecode import unidecode
 import copy
 
 from core.database import *
+from core.skills import *
 from core.paths import *
 from core.storage import *
 
@@ -34,42 +35,6 @@ if "skills_modified" not in st.session_state :
 if "skills_saved" not in st.session_state :
     st.session_state.skills_saved = False
 
-@st.dialog("Attention")
-def confirm_delete(jobs_data, job_name) :
-    st.write("Confirmer la suppression de la fiche métier ?")
-    col1, col2 = st.columns([1,1])
-    with col2 :
-        if st.button("Confirmer", width="stretch"):
-            jobs_data.pop(job_name)
-            save_skills(jobs_data)
-            st.rerun()
-    with col1 : 
-        if st.button("Annuler", width="stretch") :
-            st.rerun()
-
-@st.dialog("Nouvelle fiche métier")
-def input_job_creation(jobs_data) :
-    already_exists_error = False
-    new_job_name = st.text_input("Entrer le nom de la fiche à créer")
-    col1, col2 = st.columns([1,1])
-    with col2 :
-        if st.button("Confirmer", width="stretch", disabled=not new_job_name):
-            if new_job_name not in jobs_data :
-                jobs_data[new_job_name] = {
-                    "required" : [[]], 
-                    "optional" : [[]]
-                }
-                save_skills(jobs_data)
-                st.rerun()
-            else :
-                already_exists_error = True 
-                
-    with col1 : 
-        if st.button("Annuler", width="stretch") :
-            return False
-    
-    if already_exists_error == True :
-        st.error("Le nom entré existe déjà")
 
 
 def update_data(skills_data, editor_data) :
@@ -106,6 +71,7 @@ def load_skills():
 def save_skills(data):
     with open(SKILLS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+    update_skills_db()
     st.session_state.skills_saved = True
     st.session_state.skills_modified = []
 
@@ -116,9 +82,7 @@ if st.session_state.skills_saved == True :
     st.toast("Modifications sauvegardées !")
     st.session_state.skills_saved = False
 
-print(st.session_state.skills_modified)
 if len(st.session_state.skills_modified) == 0 :
-    print("loading skills")
     st.session_state.skills_data = load_skills()
     # st.session_state.temp_skills_data = st.session_state.skills_data
 # else : 
@@ -163,7 +127,6 @@ for index, tab in enumerate(tab_obj) :
             if index in st.session_state.skills_modified :
                 st.session_state.skills_modified.remove(index)
 
-print(st.session_state.skills_modified)
                                   
 col1, col2, col3 = st.columns([1,1,3])
 with col1 :

@@ -31,6 +31,7 @@ def init_db() :
                 'user_id INTEGER UNIQUE, ' \
                 'cv_date TEXT, ' \
                 'needs_parsing INTEGER,' \
+                'total_exp_months INTEGER DEFAULT 0,' \
                 'FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)')
                     
     cursor.execute('CREATE TABLE IF NOT EXISTS cv_raw (' \
@@ -46,7 +47,7 @@ def init_db() :
                 'FOREIGN KEY(cv_id) REFERENCES cv(id) ON DELETE CASCADE)')
     
     cursor.execute("""CREATE TABLE IF NOT EXISTS skills (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY,
                 name TEXT UNIQUE,
                 category TEXT
                 )""")
@@ -132,8 +133,12 @@ def db_raw_writer(writer_queue, stop_event) :
                             VALUES (?, ?, ?) 
                             ON CONFLICT(cv_id, skill_id) DO UPDATE SET 
                                     months = excluded.months""", task["data"])
-                
             
+            elif kind == "upsert_cv_total_exp":
+                cursor.execute("""
+                    UPDATE cv SET total_exp_months = ? WHERE id = ?
+                """, task["data"])
+                
             writer_queue.task_done()
 
 
@@ -173,13 +178,18 @@ def get_total_cv_parsing() :
     cursor = conn.cursor()
 
     cursor.execute("""
-                   SELECT SUM(CASE WHEN needs_parsing > 0 THEN 1 ELSE 0 END)
-                   FROM cv
+                   SELECT COUNT(*) FROM cv
                    """)
     
     return cursor.fetchone()[0]
 
-
+def mark_cv_parsed(cv_id):
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE cv SET needs_parsing = 0 WHERE id = ?", (cv_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 def read_raw_data(batch_size = 50) :
     conn = connect_ddb(DB_PATH)
@@ -195,7 +205,6 @@ def read_raw_data(batch_size = 50) :
     while True :
         rows = cursor.fetchmany(batch_size)
         if not rows :
-            print("here1")
             break
         for cv_id, data_raw in rows :
             yield cv_id, data_raw
@@ -228,11 +237,9 @@ def read_parsed_data(batch_size = 50) :
     cursor = conn.cursor()
 
     cursor.execute("""
-                   SELECT r.cv_id, r.exp, r.skills
-                   FROM cv_parsed r
-                   LEFT JOIN cv c ON r.cv_id = c.id
-                   WHERE c.needs_parsing = 1
-                   """)
+                    SELECT cv_id, exp, skills
+                    FROM cv_parsed
+                    """)
 
     while True :
         rows = cursor.fetchmany(batch_size)
@@ -296,6 +303,18 @@ def temp() :
     conn.commit()
     cursor.close()
     conn.close()
+
+def delete_skills() :
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("""DELETE FROM cv_skill""")
+    cursor.execute("""DELETE FROM skills""")
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+
 
 
 # def search(skill, nb_months) :
@@ -382,7 +401,35 @@ def temp() :
 
 #     return [f"{first} {last} {pdf}" for _, first, last, pdf in rows]
 
-
+def search_by_name(query: str):
+    if not query or not query.strip():
+        return []
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+    pattern = f"%{query.strip()}%"
+    cursor.execute("""
+        SELECT u.id, u.first_name, u.last_name, c.id AS cv_id, c.total_exp_months
+        FROM users u
+        JOIN cv c ON c.user_id = u.id
+        WHERE u.first_name LIKE ? OR u.last_name LIKE ?
+           OR (u.first_name || ' ' || u.last_name) LIKE ?
+           OR (u.last_name  || ' ' || u.first_name) LIKE ?
+        ORDER BY u.last_name, u.first_name
+        LIMIT 50
+    """, (pattern, pattern, pattern, pattern))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [
+        {
+            "user_id": r[0],
+            "name": f"{r[1]} {r[2]}",
+            "cv_id": r[3],
+            "total_exp_months": r[4],
+            "skills": {}
+        }
+        for r in rows
+    ]
 
 def load_pdf(cv_id):
     conn = connect_ddb(DB_PATH)
@@ -478,6 +525,76 @@ def search_multi(required_skills, optional_skills, min_months):
         for r in rows
     ]
 
+
+def search_multi_groups(required_groups, optional_skills, min_months):
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+
+    required_flat = [skill for group in required_groups for skill in group]
+    all_skills = required_flat + optional_skills
+    placeholders = ",".join("?" for _ in all_skills)
+
+    group_joins = "\n".join([
+        f"JOIN cv_skill cs{i} ON cs{i}.cv_id = c.id "
+        f"JOIN skills s{i} ON s{i}.id = cs{i}.skill_id AND s{i}.name IN ({','.join('?' for _ in group)})"
+        for i, group in enumerate(required_groups)
+    ])
+
+    query = f"""
+    WITH matched AS (
+        SELECT DISTINCT
+            u.id,
+            u.first_name,
+            u.last_name,
+            c.id AS cv_id
+        FROM users u
+        JOIN cv c ON c.user_id = u.id
+        {group_joins}
+    )
+    SELECT
+        m.id,
+        m.first_name,
+        m.last_name,
+        m.cv_id,
+        c.total_exp_months,
+        s.name AS skill,
+        cs.months
+    FROM matched m
+    JOIN cv c ON c.id = m.cv_id
+    JOIN cv_skill cs ON cs.cv_id = m.cv_id
+    JOIN skills s ON s.id = cs.skill_id
+    WHERE s.name IN ({placeholders})
+      AND cs.months >= ?
+    ORDER BY m.id, s.name
+    """
+
+    group_params = [skill for group in required_groups for skill in group]
+    params = group_params + all_skills + [min_months]
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # ✅ Groupe les skills par candidat
+    from collections import defaultdict
+    candidates = defaultdict(lambda: {"name": "", "cv_id": None, "skills": {}})
+
+    for user_id, first_name, last_name, cv_id, total_exp_months, skill, months in rows:
+        candidates[user_id]["name"] = f"{first_name} {last_name}"
+        candidates[user_id]["cv_id"] = cv_id
+        candidates[user_id]["skills"][skill] = months
+        candidates[user_id]["total_exp_months"] = total_exp_months
+    return [
+        {
+            "user_id": user_id,
+            "name": data["name"],
+            "cv_id": data["cv_id"],
+            "skills": data["skills"],  # {"git": 12, "c++": 24, ...}
+            "total_exp_months": candidates[user_id]["total_exp_months"] 
+        }
+        for user_id, data in candidates.items()
+    ]
 
 def get_user_skills(cv_id):
     conn = connect_ddb(DB_PATH)

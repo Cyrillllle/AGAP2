@@ -149,6 +149,7 @@ def parse_worker(pipelineManager, selection, writer_queue):
             treated += 1
             total_time = total_time + elapsed_time
             mean_treatmment_time = total_time / treated
+            print(mean_treatmment_time)
             remaining_time = mean_treatmment_time * (total - treated)
             if remaining_time >= 60 :
                 estimation_mn = str(int(remaining_time/60))+"mn"
@@ -159,9 +160,8 @@ def parse_worker(pipelineManager, selection, writer_queue):
             
             pipelineManager.progress = treated / total      
             pipelineManager.message = f"{treated}/{total} profils traités. Environ {estimation} restantes"
-            if skills == [] :
-                print(cv_id)
             writer_queue.put({"type": "upsert_cv_parsed", "data": (cv_id, exp, skills)})
+            mark_cv_parsed(cv_id)
         except Exception as e :
             print(e)
 

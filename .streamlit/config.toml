@@ -1,6 +1,8 @@
 [client]
 toolbarMode = "viewer"
 
+[ui]
+hideTopBar = true
 
 [theme]
 primaryColor = "#ff6b6b"             # Corail vibrant (boutons / actions)

@@ -44,30 +44,21 @@ class PipelineManager:
 
         try:
             if self.step == 1 :
-                print("etape 1")
                 fetch_stats = start_fetch(self, selection=selection, stop_requested=self._stop_event)
-                # self._merge_stats(fetch_stats)
                 if self._stop_event.is_set():
                     return self._finish("Arrêt pendant le fetch")
-                
-            print("la")
-                
+                                
             
-            if self.step == 2 :
+            if self.step == 4 :
                 self.progress = 0.0
-                print("debut etape 2")
                 parse_stats = start_parse(self, stop_event=self._stop_event)
-                # self._merge_stats(parse_stats)
 
                 if self._stop_event.is_set():
                     return self._finish("Arrêt pendant le parsing")
 
 
-            if self.step == 3 :
-                print("debut etape 2")
-                # self._set_step(0.75, "Analyse des CV…")
+            if self.step == 5 :
                 analyze_stats = start_analyze(self, stop_event=self._stop_event)
-                # self._merge_stats(analyze_stats)
 
                 self._finish("Pipeline terminé avec succès")
 
@@ -81,9 +72,7 @@ class PipelineManager:
             self.running = False
             self.progress = 1.0
 
-    # ---------------------
-    # Helpers internes
-    # ---------------------
+
 
     def _set_step(self, progress, message):
         self.progress = progress

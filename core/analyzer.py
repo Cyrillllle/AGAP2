@@ -22,7 +22,7 @@ from api.client import api_request, RequestType, GetAllUsers, GetUserCv, ExportC
 from core.storage import USER_DATA_DIR, TOKEN_PATH
 from core.database import *
 from core.parser import *
-from core.skills import *
+from core.skills import update_skills_db
 
 
 @dataclass
@@ -77,8 +77,6 @@ def search_skills(skills, tokens) :
             for ngram in ngrams :
                 if unidecode(skill.lower()) == unidecode(ngram.lower()) :
                     all.append(skill_id)
-                    # print(cv_id)
-                    # print(token)
                     break
     except Exception as e:
         print(e)
@@ -140,8 +138,10 @@ def get_nb_months(duration) :
 
 
 def analyze_cv(cv_parsed, cv_id, skills) :
+    print("analyse")
     all = []
     experiences = json.loads(cv_parsed)
+    all_skills_exp = 0
     for exp in experiences :
         exp_skills = []
         nb_months = -1
@@ -150,6 +150,7 @@ def analyze_cv(cv_parsed, cv_id, skills) :
         company = exp["company"]
         duration = exp["duration"]
         nb_months = get_nb_months(duration)
+        all_skills_exp += nb_months
         if len(details) != 0 :
             for detail in details :
                 if len(detail) > 1 and "techni" in detail[0].lower() :
@@ -171,7 +172,7 @@ def analyze_cv(cv_parsed, cv_id, skills) :
                         break
                 if added == False :
                     all.append(Exp_skill(skill, nb_months))
-
+            all.append(Exp_skill("ALL_SKILLS_EXP", all_skills_exp))
     return all
 
 def analyze_worker(pipelineManager, selection, writer_queue, skills):
@@ -180,11 +181,8 @@ def analyze_worker(pipelineManager, selection, writer_queue, skills):
     total_time = 0
     cpt = 0
     all = []
+    for cv_id, experiences, raw_skills in read_parsed_data():        
 
-    for cv_id, experiences, raw_skills in read_parsed_data():
-        # try :
-            # if pipelineManager._stop_event :
-            #     break
         start_time = time.time()
         all = analyze_cv(experiences, cv_id, skills)
         if all == [] :
@@ -192,7 +190,10 @@ def analyze_worker(pipelineManager, selection, writer_queue, skills):
             cpt += 1
         else :
             for exp_skill in all :
-                writer_queue.put({"type": "upsert_cv_skill", "data": (cv_id, exp_skill.skill, exp_skill.duration)})
+                if exp_skill.skill != "ALL_SKILLS_EXP" :
+                    writer_queue.put({"type": "upsert_cv_skill", "data": (cv_id, exp_skill.skill, exp_skill.duration)})
+                else : 
+                    writer_queue.put({"type": "upsert_cv_total_exp", "data": (exp_skill.duration, cv_id)})
         elapsed_time = time.time() - start_time
         treated += 1
         total_time = total_time + elapsed_time
@@ -212,7 +213,6 @@ def analyze_worker(pipelineManager, selection, writer_queue, skills):
         # except Exception as e :
         #     print(e)
 
-    print(cpt)
     pipelineManager.step += 1
 
 
@@ -221,6 +221,8 @@ def start_analyze(pipelineManager, stop_event):
     temp()
     # update_skills_db()
     existing_users = load_users_cv_dates()
+    update_skills_db()
     skills = read_skills_by_id()
     writer_queue, stop_event, writer_thread = start_writer()
+    print("la")
     analyze_worker(pipelineManager, stop_event, writer_queue, skills)

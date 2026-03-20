@@ -1,0 +1,186 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap');
+
+:root {
+    --bg: #0b0f19;
+    --surface: #373b4499;
+    --surface2: #1b2135;
+    --border: #2a3147;
+    --accent: #ff6b6b;
+    --accent-dim: #ff8f6b;
+    --text: #f1f5f9;
+    --text-muted: #7a8099;
+    --text-dim: #a0aabf;
+    --mono: 'DM Mono', monospace;
+    --serif: 'Fraunces', serif;
+}
+
+.stApp { background: var(--bg) !important; font-family: var(--mono) !important; }
+.main .block-container { padding: 2rem 2.5rem !important; max-width: 960px !important; }
+
+h1 {
+    font-family: var(--serif) !important;
+    font-weight: 300 !important;
+    font-size: 2.4rem !important;
+    color: var(--text) !important;
+    letter-spacing: -0.02em !important;
+    margin-bottom: 2rem !important;
+}
+
+.stSelectbox label, .stMultiSelect label, .stSlider label {
+    font-family: var(--mono) !important;
+    font-size: 0.7rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.12em !important;
+    color: var(--text-muted) !important;
+}
+
+.stSelectbox > div > div, .stMultiSelect > div > div {
+    background: var(--surface2) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 4px !important;
+    color: var(--text) !important;
+}
+
+.stCaption {
+    font-family: var(--mono) !important;
+    font-size: 0.72rem !important;
+    color: var(--accent-dim) !important;
+    background: rgba(255, 107, 107, 0.06) !important;
+    border-left: 2px solid var(--accent) !important;
+    padding: 0.4rem 0.8rem !important;
+    margin: 0.5rem 0 1.5rem !important;
+    border-radius: 0 4px 4px 0 !important;
+}
+
+.candidate-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.1rem 1.4rem;
+    margin-bottom: 0.65rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.15s ease;
+}
+
+.candidate-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.candidate-card:hover { border-color: #3d4560; }
+.candidate-card:hover::before { opacity: 1; }
+
+.candidate-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.8rem;
+}
+
+.candidate-name {
+    font-family: var(--serif);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.candidate-badges { display: flex; gap: 0.5rem; align-items: center; }
+
+.badge {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    padding: 0.22rem 0.55rem;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.badge-exp {
+    color: var(--accent);
+    background: rgba(255, 107, 107, 0.1);
+    border: 1px solid rgba(255, 107, 107, 0.25);
+}
+
+.badge-min {
+    color: var(--accent-dim);
+    background: rgba(255, 143, 107, 0.08);
+    border: 1px solid rgba(255, 143, 107, 0.2);
+}
+
+.skills-grid { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.7rem; }
+
+.skill-tag {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 0.2rem 0.55rem;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.skill-tag.highlighted {
+    color: var(--accent);
+    border-color: rgba(255, 107, 107, 0.35);
+    background: rgba(255, 107, 107, 0.08);
+}
+
+.skill-months { color: var(--text-muted); font-size: 0.62rem; }
+
+details.card-details summary {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0;
+    user-select: none;
+}
+
+details.card-details summary::before { content: '▸'; transition: transform 0.15s; color: var(--accent); }
+details.card-details[open] summary::before { transform: rotate(90deg); }
+.all-skills-list { margin-top: 0.6rem; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+
+.stButton button {
+    font-family: var(--mono) !important;
+    font-size: 0.68rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
+    background: transparent !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-muted) !important;
+    padding: 0.28rem 0.75rem !important;
+    border-radius: 3px !important;
+    transition: all 0.15s !important;
+}
+
+.stButton button:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
+}
+
+.results-count {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 1.2rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.results-count span { color: var(--accent); font-weight: 500; }

@@ -24,6 +24,15 @@ if "db_skills" not in st.session_state :
 if "jobs_data" not in st.session_state :
     st.session_state.jobs_data = ""
 
+if "temp_jobs_data" not in st.session_state :
+    st.session_state.temp_jobs_data = {}
+
+if "jobs_modified" not in st.session_state :
+    st.session_state.jobs_modified = False
+
+if "jobs_saved" not in st.session_state :
+    st.session_state.jobs_saved = False
+
 
 @st.dialog("Attention")
 def confirm_delete(jobs_data, job_name) :
@@ -62,6 +71,21 @@ def input_job_creation(jobs_data) :
     if already_exists_error == True :
         st.error("Le nom entré existe déjà")
 
+    
+@st.dialog("Attention")
+def leaving_page(job) :
+    leaving_confirm = False
+    st.write("Les modifications non sauvegardées seront perdues")
+    col1, col2 = st.columns([1,1])
+    with col2 :
+        if st.button("Confirmer", width="stretch"):
+            st.session_state.displayed_job = job
+            st.session_state.jobs_modified = False
+            st.rerun()
+    with col1 : 
+        if st.button("Annuler", width="stretch") :
+            st.rerun()
+
 
 def update_data(jobs_data, job_name, required, optional) :
     required_lists = required["required"].tolist()
@@ -72,13 +96,22 @@ def update_data(jobs_data, job_name, required, optional) :
         jobs_data[job_name]["optional"] = optional_lists
 
 
+def compare_data(db_data, job_name, required, optional) :
+    required_lists = required["required"].tolist()
+    if required_lists != [] :
+        if db_data[job_name]["required"] != required_lists :
+            return True
+    optional_lists = optional["optional"].tolist()
+    if optional_lists != [] :
+        if db_data[job_name]["optional"] != optional_lists :
+            return True
+    return False
+
+
 
 def load_jobs():
     if not JOB_PATH.exists():
         return {}
-    with open(JOB_PATH, "r", encoding="utf-8") as f:
-        content = f.read()
-        print("CONTENT:", repr(content))
     with open(JOB_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -86,6 +119,9 @@ def load_jobs():
 def save_jobs(data):
     with open(JOB_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+    st.session_state.jobs_saved = True
+    st.session_state.jobs_modified = False
+    st.rerun()
 
 
 cat_colors = {
@@ -112,14 +148,23 @@ def get_color(skill, db_skills) :
     return color
 
 def set_displayed_job(job) :
-    st.session_state.displayed_job = job
+    if st.session_state.jobs_modified :
+        leaving_page(job)
+    else :
+        st.session_state.displayed_job = job
 
 # def render(): 
 
 if st.session_state.init_jobs == True :
-    st.session_state.db_skills = read_skills_by_cat()
-    st.session_state.jobs_data = load_jobs()
+    try :
+        st.session_state.db_skills = read_skills_by_cat()
+        st.session_state.jobs_data = load_jobs()
+    except Exception :
+        st.session_state.db_skills = []
+        st.session_state.jobs_data = []
 
+if not st.session_state.jobs_data and not st.session_state.db_skills:
+    st.warning("La base de données est vide. Lancez d'abord une mise à jour depuis la page 'Base de données'.")
 
 st.title("Gestion des fiches métiers")
 st.space("small")
@@ -133,16 +178,16 @@ skills = []
 colors = []
 
 if st.session_state.available_skills == [] :
-    print("here")
-    init_skills(st.session_state.available_skills)
-
+    try :
+        init_skills(st.session_state.available_skills)
+    except Exception :
+        pass
 
 
 with col1 :
     st.space("xsmall")
     # new_category = st.text_input("Nom du métier")
     for job in st.session_state.jobs_data :
-        print(job)
         st.button(job, on_click=set_displayed_job, args=[job], width="stretch")
 
     st.markdown("___")
@@ -164,29 +209,31 @@ with col2 :
             </style>
         '''
     )
-
 with col3 :
     st.space("xsmall")
     if st.session_state.displayed_job != "" :
-        rows = []
-        job = st.session_state.jobs_data[st.session_state.displayed_job]
-        for or_list in job["required"]:
-            row = []
-            for skill in or_list :
-                for a_skill in st.session_state.available_skills :
-                    if unidecode(skill.lower()) == a_skill :
-                        row.append(a_skill)
-            rows.append(row)
-        required_df = pd.DataFrame({"required" : rows})
-        rows = []
-        for or_list in job["optional"]:
-            row = []
-            for skill in or_list :
-                for a_skill in st.session_state.available_skills :
-                    if unidecode(skill.lower()) == a_skill :
-                        row.append(a_skill)
-            rows.append(row)
-        optional_df = pd.DataFrame({"optional" : rows})
+        if not st.session_state.jobs_modified :
+            rows = []
+            job = st.session_state.jobs_data[st.session_state.displayed_job]
+            for or_list in job["required"]:
+                row = []
+                for skill in or_list :
+                    for a_skill in st.session_state.available_skills :
+                        if unidecode(skill.lower()) == a_skill :
+                            row.append(a_skill)
+                rows.append(row)
+            required_df = pd.DataFrame({"required" : rows})
+            rows = []
+            for or_list in job["optional"]:
+                row = []
+                for skill in or_list :
+                    for a_skill in st.session_state.available_skills :
+                        if unidecode(skill.lower()) == a_skill :
+                            row.append(a_skill)
+                rows.append(row)
+            optional_df = pd.DataFrame({"optional" : rows})
+        else : 
+            required_df, optional_df = st.session_state.temp_jobs_data
 
         st.markdown("Compétences obligatoires")
         required_editor = st.data_editor(
@@ -217,9 +264,16 @@ with col3 :
             },
         )
 
+
+        st.session_state.temp_jobs_data = required_editor, optional_editor
+        if compare_data(st.session_state.jobs_data, st.session_state.displayed_job, required_editor, optional_editor) :
+            st.session_state.jobs_modified = True
+        else : 
+            st.session_state.jobs_modified = False
+
         col21, col22 = st.columns([0.5,0.5])
         with col21 :
-            save_button = st.button("Sauvegarder", width="stretch")
+            save_button = st.button("Sauvegarder", disabled=not st.session_state.jobs_modified, width="stretch")
     
         with col22:
             delete_button = st.button("Supprimer", width="stretch", key="delete_btn", type="primary")

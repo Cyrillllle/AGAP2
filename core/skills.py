@@ -31,9 +31,31 @@ def read_skills_json() :
 
 
 
-def update_skills_db() : 
+def update_skills_db():
+    skills_json = read_skills_json()
+    
+    # Aplatit toutes les skills du JSON
+    skills_in_json = {skill for category in skills_json for skill in skills_json[category]}
+    
+    conn = connect_ddb(DB_PATH)
+    cursor = conn.cursor()
+    
+    placeholders = ",".join("?" for _ in skills_in_json)
+    cursor.execute(f"""
+        DELETE FROM skills 
+        WHERE name NOT IN ({placeholders})
+        AND id NOT IN (SELECT DISTINCT skill_id FROM cv_skill)
+    """, list(skills_in_json))
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
     writer_queue, stop_event, writer_thread = start_writer()
-    skills = read_skills_json()
-    for category in skills :
-        for skill in skills[category] :
+    for category in skills_json:
+        for skill in skills_json[category]:
             writer_queue.put({"type": "upsert_skills", "data": (skill, category)})
+    
+    writer_queue.join()
+    stop_event.set()
+    writer_thread.join()
