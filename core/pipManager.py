@@ -43,24 +43,23 @@ class PipelineManager:
         self._stop_event.clear()
 
         try:
-            if self.step == 1 :
-                fetch_stats = start_fetch(self, selection=selection, stop_requested=self._stop_event)
+            if not self._stop_event.is_set() and self.step == 1:
+                start_fetch(self, selection=selection, stop_requested=self._stop_event)
                 if self._stop_event.is_set():
-                    return self._finish("Arrêt pendant le fetch")
-                                
-            
-            if self.step == 4 :
+                    return self._finish("Arrêt demandé")
+
+            if not self._stop_event.is_set() and self.step == 4:
                 self.progress = 0.0
-                parse_stats = start_parse(self, stop_event=self._stop_event)
-
+                start_parse(self, stop_event=self._stop_event)
                 if self._stop_event.is_set():
-                    return self._finish("Arrêt pendant le parsing")
+                    return self._finish("Arrêt demandé")
 
+            if not self._stop_event.is_set() and self.step == 5:
+                start_analyze(self, stop_event=self._stop_event)
+                if self._stop_event.is_set():
+                    return self._finish("Arrêt demandé")
 
-            if self.step == 5 :
-                analyze_stats = start_analyze(self, stop_event=self._stop_event)
-
-                self._finish("Pipeline terminé avec succès")
+            self._finish("Pipeline terminé avec succès")
 
         except Exception as e:
             print(e)

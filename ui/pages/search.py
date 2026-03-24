@@ -15,11 +15,68 @@ def load_css():
 load_css()
 
 
-# ── Dialog ───────────────────────────────────────────────────────────
+# ── Dialogs ───────────────────────────────────────────────────────────
 @st.dialog("CV du candidat", width="large")
 def show_cv(cv_id):
     pdf_data = load_pdf(cv_id)
     st.pdf(pdf_data)
+
+
+@st.dialog("Compétences du candidat", width="large")
+def show_skills_popup(candidate_name, cv_id):
+    st.markdown(f"### {candidate_name}")
+    skills = get_user_skills(cv_id)
+    if not skills:
+        st.info("Aucune compétence enregistrée.")
+        return
+
+    st.markdown("""
+    <style>
+    .popup-skill-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.4rem 0;
+        border-bottom: 1px solid #2a3147;
+        font-family: 'DM Mono', monospace;
+        font-size: 0.82rem;
+    }
+    .popup-skill-name { color: #f1f5f9; }
+    .popup-skill-bar-wrap {
+        flex: 1;
+        margin: 0 1rem;
+        height: 4px;
+        background: #1b2135;
+        border-radius: 2px;
+    }
+    .popup-skill-bar {
+        height: 4px;
+        background: #ff6b6b;
+        border-radius: 2px;
+    }
+    .popup-skill-months { color: #7a8099; font-size: 0.72rem; white-space: nowrap; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    max_months = max(m for _, m in skills) if skills else 1
+
+    rows_html = ""
+    for skill_name, months in skills:
+        pct = int((months / max_months) * 100)
+        exp_str = format_exp(months)
+        rows_html += f"""
+        <div class="popup-skill-row">
+            <span class="popup-skill-name">{skill_name}</span>
+            <div class="popup-skill-bar-wrap">
+                <div class="popup-skill-bar" style="width:{pct}%"></div>
+            </div>
+            <span class="popup-skill-months">{exp_str}</span>
+        </div>"""
+
+    st.markdown(rows_html, unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("Voir CV"):
+        show_cv(cv_id)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -60,7 +117,7 @@ def compute_min_exp(skills_dict, required_groups):
     return min(group_maxes) if group_maxes else None
 
 
-def render_candidate_card(r, index, highlighted_skills=None, required_groups=None):
+def render_candidate_card(r, card_key, highlighted_skills=None, required_groups=None):
     highlighted_skills = set(s.lower() for s in (highlighted_skills or []))
     all_skills = r.get("skills", {})
 
@@ -74,8 +131,8 @@ def render_candidate_card(r, index, highlighted_skills=None, required_groups=Non
         key=lambda x: (x[0].lower() not in highlighted_skills, -x[1])
     )
 
-    top_skills = sorted_skills[:8]
-    rest_skills = sorted_skills[8:]
+    top_skills = sorted_skills[:6]
+    rest_skills = sorted_skills[6:]
 
     def skill_html(skill_name, months):
         is_hl = skill_name.lower() in highlighted_skills
@@ -89,14 +146,7 @@ def render_candidate_card(r, index, highlighted_skills=None, required_groups=Non
 
     top_html = "".join(skill_html(n, m) for n, m in top_skills)
 
-    details_html = ""
-    if rest_skills:
-        rest_html = "".join(skill_html(n, m) for n, m in rest_skills)
-        details_html = f"""
-        <details class="card-details">
-            <summary>+{len(rest_skills)} compétences</summary>
-            <div class="all-skills-list">{rest_html}</div>
-        </details>"""
+    rest_label = f'<span class="skill-tag" style="color:#7a8099;cursor:pointer">+{len(rest_skills)} autres</span>' if rest_skills else ""
 
     min_badge = ""
     if min_exp is not None:
@@ -111,17 +161,23 @@ def render_candidate_card(r, index, highlighted_skills=None, required_groups=Non
                 <span class="badge badge-exp">{format_exp(r.get('total_exp_months'))} exp.</span>
             </div>
         </div>
-        <div class="skills-grid">{top_html}</div>
-        {details_html}
+        <div class="skills-grid">{top_html}{rest_label}</div>
     </div>
     """
 
-    col_card, col_btn = st.columns([11, 1])
+    # ✅ Colonnes : carte | bouton skills | bouton CV
+    col_card, col_skills, col_cv = st.columns([3, 1, 1])
     with col_card:
         st.markdown(card_html, unsafe_allow_html=True)
-    with col_btn:
+    with col_skills:
+        st.space("xsmall")
         st.markdown("<div style='padding-top:1.1rem'></div>", unsafe_allow_html=True)
-        if st.button("CV", key=f"cv_{r['cv_id']}_{index}"):
+        if st.button("Voir compétences", key=f"skills_{card_key}"):
+            show_skills_popup(r["name"], r["cv_id"])
+    with col_cv:
+        st.space("xsmall")
+        st.markdown("<div style='padding-top:1.1rem'></div>", unsafe_allow_html=True)
+        if st.button("voir CV", key=f"cv_{card_key}"):
             show_cv(r["cv_id"])
 
 
@@ -151,10 +207,12 @@ def name_results_fragment():
         unsafe_allow_html=True
     )
     for i, r in enumerate(results):
+        # ✅ clé unique avec préfixe "nom" pour éviter collision avec tab poste
         r["skills"] = dict(get_user_skills(r["cv_id"]))
-        render_candidate_card(r, f"name_{i}")
+        render_candidate_card(r, f"nom_{r['cv_id']}")
 
 
+# ── Page ─────────────────────────────────────────────────────────────
 st.title("Recherche")
 
 try:
@@ -174,63 +232,42 @@ except Exception:
 if not all_skill_names and not job_names:
     st.warning("La base de données est vide. Lancez d'abord une mise à jour depuis la page 'Base de données'.")
 
-tab_poste, tab_nom = st.tabs(["Par poste / compétences", "Par nom"])
+results = []
+highlighted = []
+required_groups = []
 
-# ── Tab 1 : recherche par poste ───────────────────────────────────────
-with tab_poste:
-    results = []
-    highlighted = []
-    required_groups = []
+selected_job = st.selectbox("Poste", ["(aucun)"] + job_names)
 
-    col1, col2 = st.columns([2, 3])
-    with col1:
-        selected_job = st.selectbox("Poste", ["(aucun)"] + job_names)
+if selected_job != "(aucun)":
+    required_groups, optional_flat = get_job_requirements(job_data, selected_job)
+    highlighted = [s for group in required_groups for s in group] + optional_flat
+    logic_str = " ET ".join([f"({' OU '.join(g)})" for g in required_groups])
+    st.caption(f"Filtre actif : {logic_str}")
+    results = search_multi_groups(required_groups, optional_flat, 1)
 
-    if selected_job != "(aucun)":
-        required_groups, optional_flat = get_job_requirements(job_data, selected_job)
-        highlighted = [s for group in required_groups for s in group] + optional_flat
-        logic_str = " ET ".join([f"({' OU '.join(g)})" for g in required_groups])
-        st.caption(f"Filtre actif : {logic_str}")
-        results = search_multi_groups(required_groups, optional_flat, 1)
-    else:
-        with col2:
-            req_options = st.multiselect("Compétences obligatoires", all_skill_names)
-        opt_options = st.multiselect("Compétences optionnelles", all_skill_names)
-        highlighted = req_options + opt_options
-        required_groups = [[s] for s in req_options]
-        if req_options or opt_options:
-            results = search_multi(req_options, opt_options, 1)
+if results and required_groups:
+    for r in results:
+        skills_lower = {k.lower(): v for k, v in r.get("skills", {}).items()}
+        groups_lower = [[s.lower() for s in g] for g in required_groups]
+        r["_min_exp"] = compute_min_exp(skills_lower, groups_lower) or 0
 
-    if results and required_groups:
-        for r in results:
-            skills_lower = {k.lower(): v for k, v in r.get("skills", {}).items()}
-            groups_lower = [[s.lower() for s in g] for g in required_groups]
-            r["_min_exp"] = compute_min_exp(skills_lower, groups_lower) or 0
-
-        max_min_exp = max(r["_min_exp"] for r in results)
-        if max_min_exp > 0:
-            max_years = max(1, max_min_exp // 12)
-            min_filter = st.slider(
-                "Expérience minimale requise (années)",
-                min_value=0, max_value=int(max_years), value=0, step=1
-            )
-            results = [r for r in results if r["_min_exp"] >= min_filter * 12]
-
-    if results:
-        n = len(results)
-        st.markdown(
-            f'<div class="results-count"><span>{n}</span> profil{"s" if n > 1 else ""} trouvé{"s" if n > 1 else ""}</div>',
-            unsafe_allow_html=True
+    max_min_exp = max(r["_min_exp"] for r in results)
+    if max_min_exp > 0:
+        max_years = max(1, max_min_exp // 12)
+        filter = st.slider(
+            "Expérience recherchée (années)",
+            min_value=0, max_value=int(max_years), value=(0,int(max_years)), step=1
         )
-        for i, r in enumerate(results):
-            render_candidate_card(r, i, highlighted_skills=highlighted, required_groups=required_groups)
-    elif selected_job != "(aucun)":
-        st.markdown('<div class="results-count"><span>0</span> résultat</div>', unsafe_allow_html=True)
+        results = [r for r in results if r["_min_exp"] >= filter[0] * 12 and r["_min_exp"] <= filter[1] * 12]
 
-with tab_nom:
-    st.text_input(
-        "Nom du candidat",
-        placeholder="ex: Dupont",
-        key="name_search_input"
+if results:
+    n = len(results)
+    st.markdown(
+        f'<div class="results-count"><span>{n}</span> profil{"s" if n > 1 else ""} trouvé{"s" if n > 1 else ""}</div>',
+        unsafe_allow_html=True
     )
-    name_results_fragment()
+    for i, r in enumerate(results):
+        # ✅ clé unique avec cv_id pour éviter les doublons
+        render_candidate_card(r, f"poste_{r['cv_id']}", highlighted_skills=highlighted, required_groups=required_groups)
+elif selected_job != "(aucun)":
+    st.markdown('<div class="results-count"><span>0</span> résultat</div>', unsafe_allow_html=True)

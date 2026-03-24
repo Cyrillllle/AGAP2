@@ -80,7 +80,6 @@ st.title("Gestion des compétences métiers")
 
 if st.session_state.skills_saved == True :
     st.toast("Modifications sauvegardées !")
-    st.session_state.skills_saved = False
 
 if len(st.session_state.skills_modified) == 0 :
     st.session_state.skills_data = load_skills()

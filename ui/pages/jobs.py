@@ -9,6 +9,8 @@ from core.paths import *
 from core.storage import *
 
 
+
+
 if "init_jobs" not in st.session_state :
     st.session_state.init_jobs = True
 
@@ -41,11 +43,15 @@ def confirm_delete(jobs_data, job_name) :
     with col2 :
         if st.button("Confirmer", width="stretch"):
             jobs_data.pop(job_name)
+            st.session_state.displayed_job = ""
             save_jobs(jobs_data)
             st.rerun()
     with col1 : 
         if st.button("Annuler", width="stretch") :
             st.rerun()
+
+print(st.session_state.displayed_job)
+
 
 @st.dialog("Nouvelle fiche métier")
 def input_job_creation(jobs_data) :
@@ -66,7 +72,7 @@ def input_job_creation(jobs_data) :
                 
     with col1 : 
         if st.button("Annuler", width="stretch") :
-            return False
+            st.rerun()
     
     if already_exists_error == True :
         st.error("Le nom entré existe déjà")
@@ -87,25 +93,42 @@ def leaving_page(job) :
             st.rerun()
 
 
-def update_data(jobs_data, job_name, required, optional) :
-    required_lists = required["required"].tolist()
-    if required_lists != [] :
+def update_data(jobs_data, job_name, required, optional):
+    required_lists = [
+        row for row in required["required"].tolist()
+        if row is not None and row != [] and row != [None]
+    ]
+    if required_lists:
         jobs_data[job_name]["required"] = required_lists
-    optional_lists = optional["optional"].tolist()
-    if optional_lists != [] :
+
+    optional_lists = [
+        row for row in optional["optional"].tolist()
+        if row is not None and row != [] and row != [None]
+    ]
+    if optional_lists:
         jobs_data[job_name]["optional"] = optional_lists
 
 
-def compare_data(db_data, job_name, required, optional) :
-    required_lists = required["required"].tolist()
-    if required_lists != [] :
-        if db_data[job_name]["required"] != required_lists :
-            return True
-    optional_lists = optional["optional"].tolist()
-    if optional_lists != [] :
-        if db_data[job_name]["optional"] != optional_lists :
-            return True
-    return False
+def compare_data(db_data, job_name, required, optional):
+    required_lists = [
+        row for row in required["required"].tolist()
+        if row is not None and row != [] and row != [None]
+    ]
+    optional_lists = [
+        row for row in optional["optional"].tolist()
+        if row is not None and row != [] and row != [None]
+    ]
+
+    db_required = [
+        row for row in db_data[job_name]["required"]
+        if row is not None and row != [] and row != [None]
+    ]
+    db_optional = [
+        row for row in db_data[job_name]["optional"]
+        if row is not None and row != [] and row != [None]
+    ]
+
+    return db_required != required_lists or db_optional != optional_lists
 
 
 
@@ -279,8 +302,8 @@ with col3 :
             delete_button = st.button("Supprimer", width="stretch", key="delete_btn", type="primary")
             if delete_button:
                 deletion = confirm_delete(st.session_state.jobs_data, st.session_state.displayed_job)
-                if deletion != False : 
-                    st.session_state.displayed_job = ""
+                # if deletion != False : 
+                #     st.session_state.displayed_job = ""
 
         if save_button :
             update_data(st.session_state.jobs_data, st.session_state.displayed_job, required_editor, optional_editor)
