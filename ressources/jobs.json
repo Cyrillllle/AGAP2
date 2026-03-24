@@ -1,0 +1,11 @@
+{
+    "DevOps" : {
+        "required": [
+            { "one_of": ["Python", "C++", "C#"] },
+            { "all_of": ["Git"] }
+        ],
+        "optional": [
+            { "one_of": ["AWS", "Azure", "GCP"], "weight": 2 }
+        ]
+    }
+}
